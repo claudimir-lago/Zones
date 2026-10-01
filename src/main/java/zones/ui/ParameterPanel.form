@@ -1,0 +1,336 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Form version="1.9" maxVersion="1.9" type="org.netbeans.modules.form.forminfo.JPanelFormInfo">
+  <Properties>
+    <Property name="border" type="javax.swing.border.Border" editor="org.netbeans.modules.form.editors2.BorderEditor">
+      <Border info="org.netbeans.modules.form.compat2.border.TitledBorderInfo">
+        <TitledBorder title="Parameters" />
+      </Border>
+    </Property>
+    <Property name="preferredSize" type="java.awt.Dimension" editor="org.netbeans.beaninfo.editors.DimensionEditor">
+      <Dimension value="[365, 520]" />
+    </Property>
+  </Properties>
+  <SyntheticProperties />
+  <AuxValues>
+    <AuxValue name="FormSettings_autoResourcing" type="java.lang.Integer" value="0" />
+    <AuxValue name="FormSettings_autoSetComponentName" type="java.lang.Boolean" value="false" />
+    <AuxValue name="FormSettings_generateFQN" type="java.lang.Boolean" value="true" />
+    <AuxValue name="FormSettings_generateMnemonicsCode" type="java.lang.Boolean" value="false" />
+    <AuxValue name="FormSettings_i18nAutoMode" type="java.lang.Boolean" value="false" />
+    <AuxValue name="FormSettings_layoutCodeTarget" type="java.lang.Integer" value="1" />
+    <AuxValue name="FormSettings_listenerGenerationStyle" type="java.lang.Integer" value="0" />
+    <AuxValue name="FormSettings_variablesLocal" type="java.lang.Boolean" value="false" />
+    <AuxValue name="FormSettings_variablesModifier" type="java.lang.Integer" value="2" />
+  </AuxValues>
+  <Layout class="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout">
+    <Property name="horizontalGap" type="int" value="4" />
+    <Property name="verticalGap" type="int" value="4" />
+  </Layout>
+  <SubComponents>
+    <Container class="javax.swing.JScrollPane" name="settingsScroll">
+      <Constraints>
+        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+          <BorderConstraints direction="Center" />
+        </Constraint>
+      </Constraints>
+      <Layout class="org.netbeans.modules.form.compat2.layouts.support.JScrollPaneSupportLayout" />
+      <SubComponents>
+        <Container class="javax.swing.JPanel" name="contentPanel">
+          <Layout class="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout">
+            <Property name="horizontalGap" type="int" value="4" />
+            <Property name="verticalGap" type="int" value="8" />
+          </Layout>
+          <SubComponents>
+            <Container class="javax.swing.JPanel" name="spikePanel">
+              <Properties>
+                <Property name="border" type="javax.swing.border.Border" editor="org.netbeans.modules.form.editors2.BorderEditor">
+                  <Border info="org.netbeans.modules.form.compat2.border.TitledBorderInfo">
+                    <TitledBorder title="Outlier removal" />
+                  </Border>
+                </Property>
+              </Properties>
+              <Constraints>
+                <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                  <BorderConstraints direction="North" />
+                </Constraint>
+              </Constraints>
+              <Layout class="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout">
+                <Property name="horizontalGap" type="int" value="4" />
+                <Property name="verticalGap" type="int" value="4" />
+              </Layout>
+              <SubComponents>
+                <Component class="javax.swing.JCheckBox" name="medianCheck">
+                  <Properties>
+                    <Property name="text" type="java.lang.String" value="Enable selective MMR" />
+                    <Property name="selected" type="boolean" value="true" />
+                  </Properties>
+                  <Constraints>
+                    <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                      <BorderConstraints direction="North" />
+                    </Constraint>
+                  </Constraints>
+                </Component>
+                <Container class="javax.swing.JPanel" name="durationPanel">
+                  <Constraints>
+                    <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                      <BorderConstraints direction="Center" />
+                    </Constraint>
+                  </Constraints>
+                  <Layout class="org.netbeans.modules.form.compat2.layouts.DesignGridLayout">
+                    <Property name="rows" type="int" value="1" />
+                    <Property name="columns" type="int" value="2" />
+                    <Property name="horizontalGap" type="int" value="4" />
+                    <Property name="verticalGap" type="int" value="4" />
+                  </Layout>
+                  <SubComponents>
+                    <Component class="javax.swing.JLabel" name="durationLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Characteristic duration (s)" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="durationSpinner" />
+                  </SubComponents>
+                </Container>
+                <Component class="javax.swing.JCheckBox" name="chargeCheck">
+                  <Properties>
+                    <Property name="text" type="java.lang.String" value="Recalculate charge from current" />
+                  </Properties>
+                  <Constraints>
+                    <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                      <BorderConstraints direction="South" />
+                    </Constraint>
+                  </Constraints>
+                </Component>
+              </SubComponents>
+            </Container>
+            <Container class="javax.swing.JPanel" name="baselinePanel">
+              <Properties>
+                <Property name="border" type="javax.swing.border.Border" editor="org.netbeans.modules.form.editors2.BorderEditor">
+                  <Border info="org.netbeans.modules.form.compat2.border.TitledBorderInfo">
+                    <TitledBorder title="Baseline" />
+                  </Border>
+                </Property>
+              </Properties>
+              <Constraints>
+                <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                  <BorderConstraints direction="Center" />
+                </Constraint>
+              </Constraints>
+              <Layout class="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout">
+                <Property name="horizontalGap" type="int" value="4" />
+                <Property name="verticalGap" type="int" value="8" />
+              </Layout>
+              <SubComponents>
+                <Container class="javax.swing.JPanel" name="valuesPanel">
+                  <Constraints>
+                    <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                      <BorderConstraints direction="North" />
+                    </Constraint>
+                  </Constraints>
+                  <Layout class="org.netbeans.modules.form.compat2.layouts.DesignGridLayout">
+                    <Property name="rows" type="int" value="6" />
+                    <Property name="columns" type="int" value="2" />
+                    <Property name="horizontalGap" type="int" value="6" />
+                    <Property name="verticalGap" type="int" value="6" />
+                  </Layout>
+                  <SubComponents>
+                    <Component class="javax.swing.JLabel" name="numStdLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="num_std" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="numStdSpinner" />
+                    <Component class="javax.swing.JLabel" name="minLengthLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Minimum baseline (s)" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="minLengthSpinner" />
+                    <Component class="javax.swing.JLabel" name="widthMinimumLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Minimum peak width (s)" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="widthMinimumSpinner" />
+                    <Component class="javax.swing.JLabel" name="widthMaximumLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Maximum peak width (s)" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="widthMaximumSpinner" />
+                    <Component class="javax.swing.JLabel" name="scaleCountLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Number of scales" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="scaleCountSpinner" />
+                    <Component class="javax.swing.JLabel" name="votesLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="K (votes)" />
+                      </Properties>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="votesSpinner" />
+                  </SubComponents>
+                </Container>
+                <Container class="javax.swing.JPanel" name="smoothnessPanel">
+                  <Constraints>
+                    <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                      <BorderConstraints direction="Center" />
+                    </Constraint>
+                  </Constraints>
+                  <Layout class="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout">
+                    <Property name="horizontalGap" type="int" value="4" />
+                    <Property name="verticalGap" type="int" value="4" />
+                  </Layout>
+                  <SubComponents>
+                    <Component class="javax.swing.JLabel" name="lambdaLabel">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Baseline stiffness — log10(lambda)" />
+                      </Properties>
+                      <Constraints>
+                        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                          <BorderConstraints direction="North" />
+                        </Constraint>
+                      </Constraints>
+                    </Component>
+                    <Component class="javax.swing.JSlider" name="lambdaSlider">
+                      <Constraints>
+                        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                          <BorderConstraints direction="Center" />
+                        </Constraint>
+                      </Constraints>
+                    </Component>
+                    <Component class="javax.swing.JSpinner" name="logLambdaSpinner">
+                      <Constraints>
+                        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                          <BorderConstraints direction="South" />
+                        </Constraint>
+                      </Constraints>
+                    </Component>
+                  </SubComponents>
+                </Container>
+                <Container class="javax.swing.JPanel" name="conversionPanel">
+                  <Constraints>
+                    <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                      <BorderConstraints direction="South" />
+                    </Constraint>
+                  </Constraints>
+                  <Layout class="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout">
+                    <Property name="horizontalGap" type="int" value="4" />
+                    <Property name="verticalGap" type="int" value="4" />
+                  </Layout>
+                  <SubComponents>
+                    <Component class="javax.swing.JLabel" name="conversionStatus">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Generated scales" />
+                      </Properties>
+                      <Constraints>
+                        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                          <BorderConstraints direction="North" />
+                        </Constraint>
+                      </Constraints>
+                    </Component>
+                    <Component class="javax.swing.JCheckBox" name="advancedCheck">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Point details" />
+                      </Properties>
+                      <Constraints>
+                        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                          <BorderConstraints direction="Center" />
+                        </Constraint>
+                      </Constraints>
+                    </Component>
+                    <Component class="javax.swing.JTextArea" name="conversionArea">
+                      <Properties>
+                        <Property name="editable" type="boolean" value="false" />
+                        <Property name="rows" type="int" value="5" />
+                        <Property name="columns" type="int" value="24" />
+                        <Property name="lineWrap" type="boolean" value="true" />
+                        <Property name="wrapStyleWord" type="boolean" value="true" />
+                      </Properties>
+                      <Constraints>
+                        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                          <BorderConstraints direction="South" />
+                        </Constraint>
+                      </Constraints>
+                    </Component>
+                  </SubComponents>
+                </Container>
+              </SubComponents>
+            </Container>
+            <Container class="javax.swing.JPanel" name="localPanel">
+              <Properties>
+                <Property name="border" type="javax.swing.border.Border" editor="org.netbeans.modules.form.editors2.BorderEditor">
+                  <Border info="org.netbeans.modules.form.compat2.border.TitledBorderInfo">
+                    <TitledBorder title="Local recovery (disabled)" />
+                  </Border>
+                </Property>
+              </Properties>
+              <Constraints>
+                <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+                  <BorderConstraints direction="South" />
+                </Constraint>
+              </Constraints>
+              <Layout class="org.netbeans.modules.form.compat2.layouts.DesignGridLayout">
+                <Property name="rows" type="int" value="4" />
+                <Property name="columns" type="int" value="2" />
+                <Property name="horizontalGap" type="int" value="6" />
+                <Property name="verticalGap" type="int" value="6" />
+              </Layout>
+              <SubComponents>
+                <Component class="javax.swing.JLabel" name="windowLabel">
+                  <Properties>
+                    <Property name="text" type="java.lang.String" value="Local window (s)" />
+                  </Properties>
+                </Component>
+                <Component class="javax.swing.JSpinner" name="windowSpinner" />
+                <Component class="javax.swing.JLabel" name="noiseLabel">
+                  <Properties>
+                    <Property name="text" type="java.lang.String" value="Noise factor" />
+                  </Properties>
+                </Component>
+                <Component class="javax.swing.JSpinner" name="noiseSpinner" />
+                <Component class="javax.swing.JLabel" name="slopeLabel">
+                  <Properties>
+                    <Property name="text" type="java.lang.String" value="Slope factor" />
+                  </Properties>
+                </Component>
+                <Component class="javax.swing.JSpinner" name="slopeSpinner" />
+                <Component class="javax.swing.JLabel" name="runLabel">
+                  <Properties>
+                    <Property name="text" type="java.lang.String" value="Minimum run (s)" />
+                  </Properties>
+                </Component>
+                <Component class="javax.swing.JSpinner" name="runSpinner" />
+              </SubComponents>
+            </Container>
+          </SubComponents>
+        </Container>
+      </SubComponents>
+    </Container>
+    <Container class="javax.swing.JPanel" name="actionsPanel">
+      <Constraints>
+        <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">
+          <BorderConstraints direction="South" />
+        </Constraint>
+      </Constraints>
+      <Layout class="org.netbeans.modules.form.compat2.layouts.DesignFlowLayout">
+        <Property name="alignment" type="int" value="2" />
+        <Property name="horizontalGap" type="int" value="6" />
+        <Property name="verticalGap" type="int" value="6" />
+      </Layout>
+      <SubComponents>
+        <Component class="javax.swing.JButton" name="resetButton">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="Restore defaults" />
+          </Properties>
+        </Component>
+        <Component class="javax.swing.JButton" name="applyButton">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="Recalculate" />
+          </Properties>
+        </Component>
+      </SubComponents>
+    </Container>
+  </SubComponents>
+</Form>

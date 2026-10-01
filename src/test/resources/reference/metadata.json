@@ -1,0 +1,23 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 14:01:42) [MSC v.1944 64 bit (AMD64)]",
+  "numpy": "2.3.5",
+  "scipy": "1.18.1",
+  "pybaselines": "1.2.1",
+  "matplotlib": "3.11.2",
+  "test23_sha256": "9fdec730e94671e4f72786c1467a4cfa935136f5771b8bb858f0f18a1d0d76a0",
+  "input_sha256": "5678306b5e287612faffc78886429c084ab42b2bd1a892f70e6f9e7bb3d99821",
+  "noise_sigma": 18.870158726994596,
+  "successful_scales": [
+    24,
+    47,
+    71,
+    94,
+    132,
+    188,
+    264,
+    377
+  ],
+  "high_confidence": 841,
+  "recovered": 5662,
+  "final": 6503
+}

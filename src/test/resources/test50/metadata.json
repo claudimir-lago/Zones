@@ -1,0 +1,6 @@
+{
+  "test50_sha256": "7b9c9b95606e52f85adbf886e58243ffc5d1f8fd3e66a5381f6e3917929ca11c",
+  "pybaselines": "1.2.1",
+  "numStd": 3.0,
+  "medianEdges": "reflect"
+}

@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+title: Zones
+message: "If you use Zones in scientific work, please cite the software and the scientific reference listed below."
+type: software
+authors:
+  - family-names: do Lago
+    given-names: Claudimir Lucio
+    orcid: "https://orcid.org/0000-0003-1542-4343"
+version: 0.2.0
+date-released: 2026-09-30
+license: GPL-3.0-or-later
+abstract: >-
+  Desktop software for processing capillary electrophoresis data in the time,
+  charge, and mobility domains, including baseline correction, peak detection,
+  peak fitting, and quantitative analysis.
+references:
+  - type: article
+    title: "Qualitative and quantitative aspects of time-, charge-, and mobility-based electropherograms"
+    authors:
+      - family-names: da Costa
+        given-names: Eric Tavares
+      - family-names: Oliveira
+        given-names: Daniel Rossado
+      - family-names: do Lago
+        given-names: Claudimir Lucio
+        orcid: "https://orcid.org/0000-0003-1542-4343"
+    journal: Electrophoresis
+    volume: 43
+    start: 2363
+    end: 2376
+    year: 2022
+    doi: "10.1002/elps.202200195"
