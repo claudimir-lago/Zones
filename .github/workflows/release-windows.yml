@@ -1,0 +1,70 @@
+name: Windows portable release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to package (for example v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-package-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Check out packaging tools and guide
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: packaging
+          persist-credentials: false
+      - name: Validate tag
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Expected a release tag such as v0.2.0' }
+      - name: Check out the exact release source
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name || inputs.tag }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up redistributable Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          architecture: x64
+      - name: Build, test and package
+        id: build
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: ./packaging/package-windows.ps1 -SourceDir ./source -Tag $env:RELEASE_TAG -JavaHome $env:JAVA_HOME -OutputDir ./dist
+      - name: Attach verified package, checksum and guide
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          ASSET_DIR: ${{ steps.build.outputs.asset_dir }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo $env:GH_REPO
+          if ($LASTEXITCODE -ne 0) { throw 'The release must already exist.' }
+          $assets = @(Get-ChildItem -LiteralPath $env:ASSET_DIR -File | ForEach-Object FullName)
+          gh release upload $env:RELEASE_TAG @assets --repo $env:GH_REPO
+          if ($LASTEXITCODE -ne 0) { throw 'Upload failed. Existing assets are deliberately not overwritten.' }
