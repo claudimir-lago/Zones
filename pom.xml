@@ -4,6 +4,16 @@
   <groupId>br.org.zones</groupId><artifactId>zones</artifactId><version>0.2.0</version>
   <name>Zones</name>
   <description>Capillary electrophoresis data analysis in time, charge, and mobility domains.</description>
+  <url>https://github.com/claudimir-lago/Zones</url>
+  <scm>
+    <connection>scm:git:https://github.com/claudimir-lago/Zones.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/claudimir-lago/Zones.git</developerConnection>
+    <url>https://github.com/claudimir-lago/Zones</url>
+  </scm>
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/claudimir-lago/Zones/issues</url>
+  </issueManagement>
   <licenses>
     <license>
       <name>GNU General Public License v3.0 or later</name>

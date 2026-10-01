@@ -1,5 +1,7 @@
 # Zones
 
+Official repository: [claudimir-lago/Zones](https://github.com/claudimir-lago/Zones).
+
 **Zones** is a desktop application for processing and analyzing capillary electrophoresis (CE) data, with emphasis on conventional time-based electropherograms, charge-based electropherograms, and mobility spectra.
 
 The project is written in Java 17 using Swing/FlatLaf for the desktop interface. Its scientific processing pipeline includes baseline correction, peak detection, peak-window construction, and Haarhoff–Van der Linde (HVL) peak fitting.

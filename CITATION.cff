@@ -7,7 +7,9 @@ authors:
     given-names: Claudimir Lucio
     orcid: "https://orcid.org/0000-0003-1542-4343"
 version: 0.2.0
-date-released: 2026-09-30
+date-released: 2026-10-01
+url: "https://github.com/claudimir-lago/Zones"
+repository-code: "https://github.com/claudimir-lago/Zones"
 license: GPL-3.0-or-later
 abstract: >-
   Desktop software for processing capillary electrophoresis data in the time,
