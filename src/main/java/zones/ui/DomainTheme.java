@@ -35,6 +35,12 @@ public final class DomainTheme {
         window.repaint();
     }
 
+    /** Apply a domain tint to a standalone component tree (e.g. About content). */
+    public static void applyToComponent(Component component,ElectropherogramDomain domain){
+        tint(component,background(domain),accent(domain));
+        component.repaint();
+    }
+
     private static void tint(Component c,Color bg,Color accent){
         if(c instanceof JPanel p)p.setBackground(bg);
         if(c instanceof JViewport viewport)viewport.setBackground(readoutBackground(bg));
@@ -46,9 +52,22 @@ public final class DomainTheme {
             b.setBackground(b.isSelected()?accent:bg);
             b.setForeground(b.isSelected()?Color.WHITE:UIManager.getColor("Label.foreground"));
             b.setOpaque(true);
+        } else if(c instanceof JButton b){
+            Color buttonBg=blend(bg,accent,0.22);
+            b.setBackground(buttonBg);
+            b.setForeground(UIManager.getColor("Button.foreground"));
+            b.setOpaque(true);
         }
         if(c instanceof JComponent jc && jc.getBorder() instanceof TitledBorder tb)tb.setTitleColor(accent.darker());
         if(c instanceof Container ct)for(Component child:ct.getComponents())tint(child,bg,accent);
+    }
+
+    private static Color blend(Color base,Color accent,double fraction){
+        double f=Math.max(0,Math.min(1,fraction));
+        return new Color(
+                (int)Math.round(base.getRed()*(1-f)+accent.getRed()*f),
+                (int)Math.round(base.getGreen()*(1-f)+accent.getGreen()*f),
+                (int)Math.round(base.getBlue()*(1-f)+accent.getBlue()*f));
     }
 
     private static Color readoutBackground(Color bg){

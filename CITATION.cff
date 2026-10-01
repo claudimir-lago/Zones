@@ -6,11 +6,11 @@ authors:
   - family-names: do Lago
     given-names: Claudimir Lucio
     orcid: "https://orcid.org/0000-0003-1542-4343"
-version: 0.2.0
+version: 0.5.2
 date-released: 2026-10-01
-url: "https://github.com/claudimir-lago/Zones"
-repository-code: "https://github.com/claudimir-lago/Zones"
 license: GPL-3.0-or-later
+repository-code: "https://github.com/claudimir-lago/Zones"
+url: "https://github.com/claudimir-lago/Zones"
 abstract: >-
   Desktop software for processing capillary electrophoresis data in the time,
   charge, and mobility domains, including baseline correction, peak detection,

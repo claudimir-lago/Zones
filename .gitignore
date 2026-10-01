@@ -1,2 +1,22 @@
+# Maven
 /target/
+/.maven-repository/
+
+# NetBeans
+/nbproject/private/
+/build/
 /dist/
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python utilities/reference generation
+/.venv/
+__pycache__/
+*.pyc

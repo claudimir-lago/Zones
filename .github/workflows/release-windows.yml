@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to package (for example v0.2.0)'
+        description: 'Existing release tag to package (for example v0.5.2)'
         required: true
         type: string
 
@@ -35,7 +35,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Expected a release tag such as v0.2.0' }
+          if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Expected a release tag such as v0.5.2' }
       - name: Check out the exact release source
         uses: actions/checkout@v4
         with:

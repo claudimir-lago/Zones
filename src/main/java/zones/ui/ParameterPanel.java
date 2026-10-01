@@ -1,12 +1,16 @@
 package zones.ui;
 
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.prefs.Preferences;
 import javax.swing.*;
 import zones.model.*;
 import zones.parameters.ScaleGenerator;
 
 /** Layout and individual fields are editable in NetBeans Design (.form). */
 public class ParameterPanel extends JPanel {
+    private static final Preferences PREFS=Preferences.userNodeForPackage(ParameterPanel.class).node("parameters");
+    private static boolean preferencesEnabled(){return !Boolean.getBoolean("zones.disablePreferences");}
     private Runnable changed=()->{};
     private boolean updating;
     private String voteAdjustmentNotice="";
@@ -37,7 +41,8 @@ public class ParameterPanel extends JPanel {
         ParameterHelp.install(durationSpinner,"spikes");ParameterHelp.install(medianCheck,"spikes");ParameterHelp.install(chargeCheck,"charge");
         settingsScroll.getVerticalScrollBar().setUnitIncrement(16);
         setAnalysisParameters(AnalysisParameters.defaults());
-        resetButton.addActionListener(e->{setAnalysisParameters(AnalysisParameters.defaults());changed.run();});
+        loadPersistedSettings();
+        resetButton.addActionListener(e->{setAnalysisParameters(AnalysisParameters.defaults());saveSettings();changed.run();});
         for(JSpinner spinner:spinners())spinner.addChangeListener(e->{
             if(updating)return;
             if(spinner==votesSpinner)voteAdjustmentNotice="";
@@ -50,8 +55,59 @@ public class ParameterPanel extends JPanel {
         conversionArea.setVisible(false);
         localPanel.setVisible(false); // Local anchor recovery was removed after TestHVL09 validation.
     }
+    private void loadPersistedSettings(){
+        if(!preferencesEnabled())return;
+        updating=true;
+        try{
+            numStdSpinner.setValue(PREFS.getDouble("numStd",value(numStdSpinner)));
+            minLengthSpinner.setValue(PREFS.getDouble("minimumBaselineSeconds",value(minLengthSpinner)));
+            votesSpinner.setValue(PREFS.getInt("votes",(int)value(votesSpinner)));
+            widthMinimumSpinner.setValue(PREFS.getDouble("minimumPeakWidthSeconds",value(widthMinimumSpinner)));
+            widthMaximumSpinner.setValue(PREFS.getDouble("maximumPeakWidthSeconds",value(widthMaximumSpinner)));
+            scaleCountSpinner.setValue(PREFS.getInt("scaleCount",(int)value(scaleCountSpinner)));
+            logLambdaSpinner.setValue(PREFS.getDouble("logLambda",value(logLambdaSpinner)));
+            lambdaSlider.setValue((int)Math.round(value(logLambdaSpinner)*10));
+            windowSpinner.setValue(PREFS.getDouble("localWindowSeconds",value(windowSpinner)));
+            noiseSpinner.setValue(PREFS.getDouble("noiseFactor",value(noiseSpinner)));
+            slopeSpinner.setValue(PREFS.getDouble("slopeFactor",value(slopeSpinner)));
+            runSpinner.setValue(PREFS.getDouble("minimumRunSeconds",value(runSpinner)));
+            durationSpinner.setValue(PREFS.getDouble("mmrDurationSeconds",value(durationSpinner)));
+            medianCheck.setSelected(PREFS.getBoolean("mmrEnabled",medianCheck.isSelected()));
+            chargeCheck.setSelected(PREFS.getBoolean("recalculateCharge",chargeCheck.isSelected()));
+        }finally{updating=false;}
+        updateConversions();
+    }
+    private void saveSettings(){
+        if(!preferencesEnabled())return;
+        PREFS.putDouble("numStd",value(numStdSpinner));
+        PREFS.putDouble("minimumBaselineSeconds",value(minLengthSpinner));
+        PREFS.putInt("votes",(int)value(votesSpinner));
+        PREFS.putDouble("minimumPeakWidthSeconds",value(widthMinimumSpinner));
+        PREFS.putDouble("maximumPeakWidthSeconds",value(widthMaximumSpinner));
+        PREFS.putInt("scaleCount",(int)value(scaleCountSpinner));
+        PREFS.putDouble("logLambda",value(logLambdaSpinner));
+        PREFS.putDouble("localWindowSeconds",value(windowSpinner));
+        PREFS.putDouble("noiseFactor",value(noiseSpinner));
+        PREFS.putDouble("slopeFactor",value(slopeSpinner));
+        PREFS.putDouble("minimumRunSeconds",value(runSpinner));
+        PREFS.putDouble("mmrDurationSeconds",value(durationSpinner));
+        PREFS.putBoolean("mmrEnabled",medianCheck.isSelected());
+        PREFS.putBoolean("recalculateCharge",chargeCheck.isSelected());
+    }
+    private static String formatSeconds(double seconds){
+        return String.format(Locale.ROOT,seconds<10?"%.3f":seconds<100?"%.2f":"%.1f",seconds);
+    }
+    private static String formatScalesSeconds(int[] scales,double dtSeconds){
+        StringBuilder out=new StringBuilder("[");
+        for(int i=0;i<scales.length;i++){
+            if(i>0)out.append(", ");
+            double seconds=scales[i]*dtSeconds;
+            out.append(formatSeconds(seconds));
+        }
+        return out.append("]").toString();
+    }
     private JSpinner[] spinners(){return new JSpinner[]{numStdSpinner,minLengthSpinner,votesSpinner,widthMinimumSpinner,widthMaximumSpinner,scaleCountSpinner,logLambdaSpinner,windowSpinner,noiseSpinner,slopeSpinner,runSpinner,durationSpinner};}
-    public void onChanged(Runnable action){changed=action;}
+    public void onChanged(Runnable action){changed=()->{saveSettings();action.run();};}
     public void onApply(Runnable action){applyButton.addActionListener(e->action.run());}
     public void setBusy(boolean busy){for(JSpinner field:spinners())field.setEnabled(!busy);lambdaSlider.setEnabled(!busy);medianCheck.setEnabled(!busy);chargeCheck.setEnabled(!busy);applyButton.setEnabled(!busy);resetButton.setEnabled(!busy);}
     private static double value(JSpinner field){return ((Number)field.getValue()).doubleValue();}
@@ -91,10 +147,14 @@ public class ParameterPanel extends JPanel {
             int previousK=(int)value(votesSpinner);boolean adjusted=previousK>scales.length;
             if(adjusted){votesSpinner.setValue(scales.length);voteAdjustmentNotice="K adjusted from "+previousK+" to "+scales.length+".";}
             ((SpinnerNumberModel)votesSpinner.getModel()).setMaximum(scales.length);
-            var p=physicalParameters().toInternal(samplingIntervalSeconds);
             var spikes=new SpikeRemovalParameters(medianCheck.isSelected(),value(durationSpinner));
-            conversionStatus.setText(voteAdjustmentNotice.isEmpty()?scales.length+"  unique scales / "+requested+" requested":voteAdjustmentNotice+" (unique scales)");
-            conversionArea.setText("median dt = "+samplingIntervalSeconds+" s\nScales: "+Arrays.toString(scales)+"\nmin_length = "+p.minLength()+"; local window = "+p.localWindow()+"; run = "+p.minimumRun()+" points\nMMR: "+(spikes.enabled()?"N = "+spikes.halfWindow(samplingIntervalSeconds)+", window = "+spikes.windowPoints(samplingIntervalSeconds)+" points":"disabled"));
+            String scaleRange=scales.length==1?formatSeconds(scales[0]*samplingIntervalSeconds)+" s":
+                    formatSeconds(scales[0]*samplingIntervalSeconds)+"–"+formatSeconds(scales[scales.length-1]*samplingIntervalSeconds)+" s";
+            conversionStatus.setText(voteAdjustmentNotice.isEmpty()?scales.length+" scales ("+scaleRange+")":voteAdjustmentNotice+" ("+scaleRange+")");
+            conversionArea.setText(String.format(Locale.ROOT,
+                    "median dt = %.1f ms%nScales (s): %s%nMinimum baseline = %.4g s%nMMR: %s",
+                    samplingIntervalSeconds*1000.0,formatScalesSeconds(scales,samplingIntervalSeconds),value(minLengthSpinner),
+                    spikes.enabled()?String.format(Locale.ROOT,"enabled; characteristic duration = %.4g s",spikes.durationSeconds()):"disabled"));
         }catch(IllegalArgumentException e){conversionStatus.setText("Check durations and the peak-width range.");conversionArea.setText(e.getMessage());}
         finally{updating=false;}
     }
@@ -191,7 +251,7 @@ public class ParameterPanel extends JPanel {
         conversionPanel.setLayout(new java.awt.BorderLayout(4, 4));
         conversionStatus.setText("Generated scales");
         conversionPanel.add(conversionStatus, java.awt.BorderLayout.NORTH);
-        advancedCheck.setText("Details in points");
+        advancedCheck.setText("Details");
         conversionPanel.add(advancedCheck, java.awt.BorderLayout.CENTER);
         conversionArea.setEditable(false);
         conversionArea.setRows(5);

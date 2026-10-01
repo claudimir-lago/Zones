@@ -28,8 +28,26 @@ public class PeakAnalysisPanel extends JPanel {
     private long analysisGeneration=0;
     private boolean rebuildingTables=false;
     private final java.util.List<PeakFit> rowFits=new ArrayList<>();
+    private final java.util.List<PeakComponent> quantComponents=new ArrayList<>();
+    private final java.util.List<Double> quantR2=new ArrayList<>();
+    private final java.util.List<Integer> quantPositionDecimals=new ArrayList<>();
+    private final java.util.List<Integer> quantWidthDecimals=new ArrayList<>();
+    @FunctionalInterface public interface MobilityReferenceEditor { void apply(String role, MobilityReference reference); }
+    private MobilityReferenceEditor mobilityReferenceEditor=(role,ref)->{};
+    private boolean invertCharge;
+    private MobilityReference mobilityRef1,mobilityRef2; private String mobilityReferenceMode="";
     private boolean busy;
-    private final JTable quantTable=new JTable();
+    private final JTable quantTable=new JTable(){
+        @Override public java.awt.Component prepareRenderer(javax.swing.table.TableCellRenderer renderer,int row,int column){
+            java.awt.Component component=super.prepareRenderer(renderer,row,column);
+            if(!isRowSelected(row)){
+                int modelRow=convertRowIndexToModel(row);
+                boolean lowQuality=modelRow>=0&&modelRow<quantR2.size()&&Double.isFinite(quantR2.get(modelRow))&&quantR2.get(modelRow)<0.99;
+                component.setBackground(lowQuality?new java.awt.Color(255,235,238):getBackground());
+            }
+            return component;
+        }
+    };
     private final JCheckBox nCheck=new JCheckBox("Plates (N)",true);
     private final JCheckBox ngauCheck=new JCheckBox("Gaussian plates (NGau)",false);
     private final JCheckBox fitDetailsCheck=new JCheckBox("Fit details",false);
@@ -39,6 +57,7 @@ public class PeakAnalysisPanel extends JPanel {
     public PeakAnalysisPanel(){
         initComponents();
         quantTable.setAutoCreateRowSorter(true);quantTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        quantTable.setToolTipText("Rows highlighted in pale red have a time-domain fit with R² < 0.99 and should be inspected.");
         tabs.insertTab("Quantitation",null,new JScrollPane(quantTable),"Primary analytical results",0);
         controlsPanel.add(nCheck);controlsPanel.add(ngauCheck);controlsPanel.add(fitDetailsCheck);controlsPanel.add(exportTableButton);
         nCheck.addActionListener(e->{if(result!=null)display(result);});ngauCheck.addActionListener(e->{if(result!=null)display(result);});fitDetailsCheck.addActionListener(e->{if(result!=null)display(result);});
@@ -63,10 +82,13 @@ public class PeakAnalysisPanel extends JPanel {
         exportButton.setEnabled(false);
     }
     public void setInput(BaselineResult baseline,AnalysisResult analysis){this.baseline=baseline;this.analysis=analysis;}
-    public void setDomain(ElectropherogramDomain domain,MobilityCalibration calibration){
-        this.activeDomain=domain==null?ElectropherogramDomain.TIME:domain;this.mobilityCalibration=calibration;
+    public void setDomain(ElectropherogramDomain domain,MobilityCalibration calibration){setDomain(domain,calibration,invertCharge);}
+    public void setDomain(ElectropherogramDomain domain,MobilityCalibration calibration,boolean invertCharge){
+        this.activeDomain=domain==null?ElectropherogramDomain.TIME:domain;this.mobilityCalibration=calibration;this.invertCharge=invertCharge;
         if(result!=null)display(result);
     }
+    public void onMobilityReferenceEdit(MobilityReferenceEditor action){mobilityReferenceEditor=action==null?(role,ref)->{}:action;}
+    public void setMobilityReferences(MobilityReference r1,MobilityReference r2,String mode){this.mobilityRef1=r1;this.mobilityRef2=r2;this.mobilityReferenceMode=mode==null?"":mode;if(result!=null)display(result);}
     public void onSelection(Consumer<PeakFit> action){selection=action;}
     public void onOverlayChanged(Runnable action){overlayChanged=action;}
     public void onZoomToWindow(Consumer<PeakFit> action){zoomToWindow=action==null?fit->{}:action;}
@@ -84,7 +106,7 @@ public class PeakAnalysisPanel extends JPanel {
         }.execute();
     }
     public void display(PeakAnalysisResult value){
-        result=value;rowFits.clear();rebuildingTables=true;
+        result=value;rowFits.clear();quantComponents.clear();quantR2.clear();quantPositionDecimals.clear();quantWidthDecimals.clear();rebuildingTables=true;
         var table=model("Window","LPNR rank","Prom. rank","Polarity","Status","Observed apex (min)","Migration time a1 (min)","Fitted apex (min)","Local prominence (a.u.)","Local sigma (a.u.)","LPNR","W50 (s)","eta","a2 (s)","a3 (s)","Area (a.u.·s)","Captured (%)","N","NGau","FWHM (s)","R²","RMS (a.u.)","Type");
         var windowModel=windowModel("Window","Type","Start (min)","End (min)","Components","Status","Offset (a.u.)","Experimental algebraic area (a.u.·s)","Experimental absolute area (a.u.·s)","Fitted algebraic area (a.u.·s)","Absolute component sum (a.u.·s)","Isolated difference (%)","R²","RMS (a.u.)","Evaluations","Converged","Diagnostic");
         for(var f:value.fits()){
@@ -92,20 +114,24 @@ public class PeakAnalysisPanel extends JPanel {
             windowModel.addRow(new Object[]{f.window().id(),f.window().type(),f.window().startSeconds()/60,f.window().endSeconds()/60,f.components().size(),state,f.offset(),f.experimentalAlgebraicArea(),f.experimentalAbsoluteArea(),f.fittedAlgebraicArea(),f.absoluteComponentSum(),f.isolatedAreaDifferencePercent(),f.r2(),f.rms(),f.evaluations(),f.success(),f.message()});
             for(var c:f.components()){var d=c.candidate();rowFits.add(f);table.addRow(new Object[]{f.window().id(),d.rank(),d.prominenceRank(),d.polarity()>0?"+":"−",state,d.observedApexSeconds()/60,c.a1Seconds()/60,c.fittedApexSeconds()/60,d.localProminence(),d.localNoiseSigma(),d.lpnr(),d.w50Seconds(),c.eta(),c.a2Seconds(),c.a3Seconds(),c.signedArea(),100*c.capturedFraction(),c.effectivePlates(),c.gaussianPlates(),c.fwhmSeconds(),f.r2(),f.rms(),f.window().type()});}
         }
-        var metricCalculator=new DomainPeakCalculator(baseline.data(),activeDomain,mobilityCalibration);
-        String positionLabel=activeDomain==ElectropherogramDomain.TIME?"Migration time (min)":activeDomain==ElectropherogramDomain.CHARGE?"Migration charge |q| (mC)":"Mobility |mu| (Ti)";
+        var metricCalculator=new DomainPeakCalculator(baseline.data(),activeDomain,mobilityCalibration,invertCharge);
+        String positionLabel=activeDomain==ElectropherogramDomain.TIME?"Migration time (min)":activeDomain==ElectropherogramDomain.CHARGE?(invertCharge?"Migration -charge (mC)":"Migration charge (mC)"):(mobilityCalibration!=null?mobilityCalibration.mobilityName()+" (Ti)":"Mobility (Ti)");
         String areaLabel=activeDomain==ElectropherogramDomain.TIME?"Area (a.u.·s)":activeDomain==ElectropherogramDomain.CHARGE?"Area (a.u.·mC)":"Area (a.u.·Ti)";
         String widthLabel=activeDomain==ElectropherogramDomain.TIME?"FWHM (s)":activeDomain==ElectropherogramDomain.CHARGE?"FWHM (mC)":"FWHM (Ti)";
-        java.util.List<String> qc=new ArrayList<>(java.util.List.of(positionLabel,areaLabel));
+        java.util.List<String> qc=new ArrayList<>(java.util.List.of(positionLabel,areaLabel,"Mobility reference","Known μeff (Ti)"));
         if(nCheck.isSelected())qc.add("Plates (N, time fit)");if(ngauCheck.isSelected())qc.add("Gaussian plates (NGau, time fit)");
         if(fitDetailsCheck.isSelected()){qc.add(widthLabel);qc.add("R² (time fit)");}
-        var qm=model(qc.toArray(String[]::new));
+        var qm=quantitationModel(qc.toArray(String[]::new));
         for(var f:value.fits())for(var c:f.components()){
-            var metrics=metricCalculator.metrics(c);java.util.List<Object> row=new ArrayList<>();row.add(metrics.position());row.add(metrics.signedArea());
+            quantComponents.add(c);quantR2.add(f.r2());quantPositionDecimals.add(localAxisDecimals(c,false));quantWidthDecimals.add(localAxisDecimals(c,true));
+            var metrics=metricCalculator.metrics(c);java.util.List<Object> row=new ArrayList<>();
+            row.add(activeDomain==ElectropherogramDomain.TIME?metrics.position()/60.0:metrics.position());row.add(metrics.signedArea());row.add(referenceRole(c));row.add(referenceKnownMobility(c));
             if(nCheck.isSelected())row.add(c.effectivePlates());if(ngauCheck.isSelected())row.add(c.gaussianPlates());
             if(fitDetailsCheck.isSelected()){row.add(metrics.fwhm());row.add(f.r2());}qm.addRow(row.toArray());
         }
-        quantTable.setModel(qm);for(int i=0;i<quantTable.getColumnCount();i++)quantTable.getColumnModel().getColumn(i).setPreferredWidth(150);
+        quantTable.setModel(qm);
+        installMobilityReferenceEditors(qm);
+        for(int i=0;i<quantTable.getColumnCount();i++)quantTable.getColumnModel().getColumn(i).setPreferredWidth(i==2?135:i==3?125:150);
         resultsTable.setModel(table);windowsTable.setModel(windowModel);
         windowModel.addTableModelListener(e->{if(rebuildingTables||busy||e.getType()!=javax.swing.event.TableModelEvent.UPDATE||e.getColumn()!=4)return;int row=e.getFirstRow();try{int count=Integer.parseInt(windowModel.getValueAt(row,4).toString());refitWindowComponentCount(row,count);}catch(Exception ex){statusLabel.setText("Component-count refit failed: "+ex.getMessage());display(result);}});
         var candidateModel=model("LPNR rank","Prom. rank","Polarity","Observed apex (min)","Local prominence (a.u.)","Local sigma (a.u.)","Noise points","LPNR","BES","W50 (s)","Status");
@@ -115,6 +141,8 @@ public class PeakAnalysisPanel extends JPanel {
             if(Double.isFinite(c.lpnr())&&c.lpnr()>0)series.add(c.rank(),c.lpnr());
         }
         candidatesTable.setModel(candidateModel);
+        centerAllTables();
+        installAdaptiveQuantitationRenderers(qm,positionLabel,widthLabel);
         for(JTable tab:new JTable[]{resultsTable,windowsTable,candidatesTable})for(int i=0;i<tab.getColumnCount();i++)tab.getColumnModel().getColumn(i).setPreferredWidth(i==4?215:150);
         for(int i=0;i<4;i++)resultsTable.getColumnModel().getColumn(i).setPreferredWidth(i==0?65:90);
         var chart=ChartFactory.createScatterPlot("LPNR — detection metric", "LPNR rank","LPNR",new XYSeriesCollection(series));
@@ -128,16 +156,134 @@ public class PeakAnalysisPanel extends JPanel {
         var threshold=new ValueMarker(value.parametersUsed().lpnrThreshold(),java.awt.Color.DARK_GRAY,new java.awt.BasicStroke(1.3f));threshold.setLabel("Threshold "+value.parametersUsed().lpnrThreshold());
         threshold.setLabelAnchor(org.jfree.chart.ui.RectangleAnchor.TOP_RIGHT);threshold.setLabelTextAnchor(org.jfree.chart.ui.TextAnchor.BOTTOM_RIGHT);chart.getXYPlot().addRangeMarker(threshold);
         rankingHost.removeAll();rankingHost.add(new ChartPanel(chart),BorderLayout.CENTER);rankingHost.revalidate();rankingHost.repaint();
-        String domainNote=switch(activeDomain){case TIME->"Time-domain quantitation.";case CHARGE->"Charge-domain quantitation uses |q|; fitting/detection remain in time.";case MOBILITY->"Mobility-domain quantitation uses |mu| and excludes >1000 Ti; fitting/detection remain in time.";};
+        String domainNote=switch(activeDomain){case TIME->"Time-domain quantitation.";case CHARGE->"Charge-domain quantitation preserves charge sign"+(invertCharge?" (displaying -charge).":".")+" Fitting/detection remain in time.";case MOBILITY->(mobilityCalibration==null?"Mobility scale not calibrated.":mobilityCalibration.mobilityName()+"; signed values are shown and |mobility| > 1000 Ti is excluded.");};
         statusLabel.setText(value.candidates().size()+" candidates | "+value.selectedCount()+" selected | "+value.fits().size()+" windows | "+value.fits().stream().filter(f->!f.reliable()).count()+" unreliable. "+domainNote);
         if(!rowFits.isEmpty())resultsTable.setRowSelectionInterval(0,0);else selection.accept(null);
         rebuildingTables=false;exportButton.setEnabled(!busy);
     }
+
+    private String referenceRole(PeakComponent c){
+        if("Instrument parameters only".equals(mobilityReferenceMode))return "—";
+        double q=componentCharge(c);if(!Double.isFinite(q))return "—";
+        if(matchesReference(q,mobilityRef1))return mobilityReferenceMode.startsWith("Two")?"Ref 1":"Reference";
+        if(matchesReference(q,mobilityRef2))return "Ref 2";
+        return "—";
+    }
+    private Double referenceKnownMobility(PeakComponent c){
+        double q=componentCharge(c);if(!Double.isFinite(q))return null;
+        if(matchesReference(q,mobilityRef1))return mobilityRef1.effectiveMobilityTi();
+        if(matchesReference(q,mobilityRef2))return mobilityRef2.effectiveMobilityTi();
+        return null;
+    }
+    private double componentCharge(PeakComponent c){
+        if(baseline==null)return Double.NaN;
+        return new zones.processing.DomainTransform(baseline.data(),null,false).signedChargeAtTime(c.a1Seconds()/60.0);
+    }
+    private boolean matchesReference(double q,MobilityReference ref){
+        if(ref==null||!Double.isFinite(q))return false;double tol=Math.max(1e-9,Math.abs(q)*1e-8);return Math.abs(q-ref.migrationChargeMilliCoulombs())<=tol;
+    }
+    private void installMobilityReferenceEditors(DefaultTableModel qm){
+        int roleColumn=qm.findColumn("Mobility reference"),muColumn=qm.findColumn("Known μeff (Ti)");
+        if(roleColumn<0||muColumn<0)return;
+        String[] roles="Two effective-mobility standards".equals(mobilityReferenceMode)?new String[]{"—","Ref 1","Ref 2"}:"Instrument parameters + one effective-mobility reference".equals(mobilityReferenceMode)?new String[]{"—","Reference"}:new String[]{"—"};
+        quantTable.getColumnModel().getColumn(roleColumn).setCellEditor(new DefaultCellEditor(new JComboBox<>(roles)));
+        quantTable.getColumnModel().getColumn(muColumn).setCellEditor(new DefaultCellEditor(new JTextField()));
+        qm.addTableModelListener(e->{
+            if(rebuildingTables||e.getType()!=javax.swing.event.TableModelEvent.UPDATE)return;
+            int row=e.getFirstRow(),column=e.getColumn();if(row<0||row>=quantComponents.size()||(column!=roleColumn&&column!=muColumn))return;
+            PeakComponent component=quantComponents.get(row);double q=componentCharge(component);
+            if(!Double.isFinite(q)||q==0){statusLabel.setText("Selected peak has no valid non-zero migration charge.");SwingUtilities.invokeLater(()->display(result));return;}
+            String role=Objects.toString(qm.getValueAt(row,roleColumn),"—");
+            if("Instrument parameters only".equals(mobilityReferenceMode)){statusLabel.setText("Instrument-parameters-only calibration does not use peak references.");SwingUtilities.invokeLater(()->display(result));return;}
+            if("—".equals(role)){
+                mobilityReferenceEditor.apply("—",new MobilityReference(q,Double.NaN,"Peak at "+String.format(Locale.ROOT,"%.6g min",component.a1Seconds()/60.0)));
+                return;
+            }
+            Object raw=qm.getValueAt(row,muColumn);
+            if(raw==null||raw.toString().isBlank()){statusLabel.setText("Enter the known effective mobility (Ti) for "+role+".");return;}
+            try{
+                double mu=raw instanceof Number n?n.doubleValue():Double.parseDouble(raw.toString().trim());
+                if(!Double.isFinite(mu))throw new NumberFormatException();
+                String label="Peak at "+String.format(Locale.ROOT,"%.6g min",component.a1Seconds()/60.0);
+                mobilityReferenceEditor.apply(role,new MobilityReference(q,mu,label));
+                statusLabel.setText(String.format(Locale.ROOT,"%s stored: q = %.8g mC, μeff = %.8g Ti",role,q,mu));
+            }catch(Exception ex){JOptionPane.showMessageDialog(this,"Enter a valid effective mobility in Ti.","Mobility reference",JOptionPane.ERROR_MESSAGE);SwingUtilities.invokeLater(()->display(result));}
+        });
+    }
+    private void centerAllTables(){
+        for(JTable t:new JTable[]{quantTable,resultsTable,windowsTable,candidatesTable}){
+            var center=new javax.swing.table.DefaultTableCellRenderer();center.setHorizontalAlignment(SwingConstants.CENTER);
+            t.setDefaultRenderer(Object.class,center);t.setDefaultRenderer(String.class,center);t.setDefaultRenderer(Integer.class,center);
+            if(t.getTableHeader()!=null){var base=t.getTableHeader().getDefaultRenderer();t.getTableHeader().setDefaultRenderer((table,value,isSelected,hasFocus,row,column)->{var comp=base.getTableCellRendererComponent(table,value,isSelected,hasFocus,row,column);if(comp instanceof JLabel label)label.setHorizontalAlignment(SwingConstants.CENTER);return comp;});}
+            var num=new javax.swing.table.DefaultTableCellRenderer(){@Override protected void setValue(Object v){setHorizontalAlignment(SwingConstants.CENTER);if(!(v instanceof Number n)||!Double.isFinite(n.doubleValue()))setText("unavailable");else setText(String.format(Locale.ROOT,"%.6g",n.doubleValue()));}};
+            t.setDefaultRenderer(Double.class,num);
+            for(int c=0;c<t.getColumnCount();c++){
+                String name=t.getColumnName(c);
+                if(name.equals("N")||name.equals("NGau")||name.contains("Plates (N")||name.contains("NGau")) t.getColumnModel().getColumn(c).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer(){@Override protected void setValue(Object v){setHorizontalAlignment(SwingConstants.CENTER);if(v instanceof Number n&&Double.isFinite(n.doubleValue()))setText(String.format(Locale.ROOT,"%.0f",n.doubleValue()));else setText("unavailable");}});
+                else if(name.startsWith("Area (")) t.getColumnModel().getColumn(c).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer(){@Override protected void setValue(Object v){setHorizontalAlignment(SwingConstants.CENTER);if(v instanceof Number n&&Double.isFinite(n.doubleValue()))setText(String.format(Locale.ROOT,"%.5g",n.doubleValue()));else setText("unavailable");}});
+            }
+        }
+    }
+
+    /**
+     * Estimates how many decimal places are justified by the local sampling resolution
+     * around a fitted peak. Internally the time vector remains in minutes; the time-domain
+     * FWHM is reported in seconds, so its local spacing is converted accordingly.
+     */
+    private int localAxisDecimals(PeakComponent component,boolean width){
+        if(baseline==null)return 6;
+        double[] time=baseline.data().timeMinutes();
+        if(time.length<2)return 6;
+        double target=component.a1Seconds()/60.0;
+        int index=Arrays.binarySearch(time,target);
+        if(index<0){index=-index-1;if(index>=time.length)index=time.length-1;else if(index>0&&Math.abs(time[index-1]-target)<=Math.abs(time[index]-target))index--;}
+        var transform=new zones.processing.DomainTransform(baseline.data(),mobilityCalibration,invertCharge);
+        java.util.List<Double> delta=new ArrayList<>();
+        int from=Math.max(0,index-3),to=Math.min(time.length-2,index+2);
+        for(int j=from;j<=to;j++){
+            double a=transform.xAtTime(activeDomain,time[j]),b=transform.xAtTime(activeDomain,time[j+1]);
+            double d=Math.abs(b-a);
+            if(activeDomain==ElectropherogramDomain.TIME&&width)d*=60.0;
+            if(Double.isFinite(d)&&d>0)delta.add(d);
+        }
+        if(delta.isEmpty())return 6;
+        java.util.Collections.sort(delta);int n=delta.size();double resolution=n%2==0?(delta.get(n/2-1)+delta.get(n/2))/2.0:delta.get(n/2);
+        return decimalsFromResolution(resolution);
+    }
+    private static int decimalsFromResolution(double resolution){
+        if(!(Double.isFinite(resolution)&&resolution>0))return 6;
+        int decimals=(int)Math.ceil(-Math.log10(resolution));
+        return Math.max(0,Math.min(9,decimals));
+    }
+    private void installAdaptiveQuantitationRenderers(DefaultTableModel model,String positionLabel,String widthLabel){
+        int positionColumn=model.findColumn(positionLabel);
+        if(positionColumn>=0)quantTable.getColumnModel().getColumn(positionColumn).setCellRenderer(adaptiveNumberRenderer(quantPositionDecimals));
+        int widthColumn=model.findColumn(widthLabel);
+        if(widthColumn>=0)quantTable.getColumnModel().getColumn(widthColumn).setCellRenderer(adaptiveNumberRenderer(quantWidthDecimals));
+    }
+    private javax.swing.table.TableCellRenderer adaptiveNumberRenderer(java.util.List<Integer> decimalsByModelRow){
+        return new javax.swing.table.DefaultTableCellRenderer(){
+            @Override public java.awt.Component getTableCellRendererComponent(JTable table,Object value,boolean selected,boolean focus,int row,int column){
+                super.getTableCellRendererComponent(table,value,selected,focus,row,column);setHorizontalAlignment(SwingConstants.CENTER);
+                if(value instanceof Number n&&Double.isFinite(n.doubleValue())){
+                    int modelRow=table.convertRowIndexToModel(row);int decimals=modelRow>=0&&modelRow<decimalsByModelRow.size()?decimalsByModelRow.get(modelRow):6;
+                    double v=n.doubleValue(),zero=Math.pow(10.0,-decimals)*0.5;if(Math.abs(v)<zero)v=0.0;
+                    setText(String.format(Locale.ROOT,"% ."+decimals+"f",v).trim());
+                }else setText("unavailable");
+                return this;
+            }
+        };
+    }
+
     private void refitWindowComponentCount(int row,int count){
         if(result==null||baseline==null)return;int windowId=result.fits().get(row).window().id();setBusy(true);statusLabel.setText("Refitting W"+windowId+" with "+count+" component(s)…");var snapshot=result;double[] times=Arrays.stream(baseline.data().timeMinutes()).map(v->v*60).toArray();
         new SwingWorker<PeakAnalysisResult,Void>(){@Override protected PeakAnalysisResult doInBackground(){return new PeakAnalysisProcessor().refitWindowComponentCount(times,baseline.correctedSignal(),snapshot,windowId,count);}@Override protected void done(){try{display(get());statusLabel.setText("W"+windowId+" refitted with "+count+" component(s) — USER_EDITED.");}catch(Exception ex){statusLabel.setText("Component-count refit failed: "+(ex.getCause()==null?ex.getMessage():ex.getCause().getMessage()));display(snapshot);}finally{setBusy(false);}}}.execute();
     }
     private DefaultTableModel windowModel(String... columns){return new DefaultTableModel(columns,0){@Override public boolean isCellEditable(int r,int c){return c==4;}@Override public Class<?> getColumnClass(int c){if(c==4)return Integer.class;for(int r=0;r<getRowCount();r++)if(getValueAt(r,c)!=null)return getValueAt(r,c).getClass();return Object.class;}};}
+    private DefaultTableModel quantitationModel(String... columns){return new DefaultTableModel(columns,0){
+        @Override public boolean isCellEditable(int r,int c){String n=getColumnName(c);if("Instrument parameters only".equals(mobilityReferenceMode))return false;if(n.equals("Mobility reference"))return true;if(n.equals("Known μeff (Ti)"))return !"—".equals(Objects.toString(getValueAt(r,findColumn("Mobility reference")),"—"));return false;}
+        @Override public Class<?> getColumnClass(int c){String n=getColumnName(c);if(n.equals("Mobility reference"))return String.class;if(n.equals("Known μeff (Ti)"))return Object.class;for(int r=0;r<getRowCount();r++)if(getValueAt(r,c)!=null)return getValueAt(r,c).getClass();return Object.class;}
+    };}
     private DefaultTableModel model(String... columns){return new DefaultTableModel(columns,0){@Override public boolean isCellEditable(int r,int c){return false;}@Override public Class<?> getColumnClass(int c){for(int r=0;r<getRowCount();r++)if(getValueAt(r,c)!=null)return getValueAt(r,c).getClass();return Object.class;}};}
     private void setBusy(boolean value){busy=value;analyzeButton.setEnabled(!value);thresholdSpinner.setEnabled(!value);exportButton.setEnabled(!value&&result!=null);}
     private void exportTable(){
@@ -192,7 +338,7 @@ public class PeakAnalysisPanel extends JPanel {
         sumCheck.setText("Fitted sum");
         sumCheck.setSelected(true);
         controlsPanel.add(sumCheck);
-        markersCheck.setText("Time markers");
+        markersCheck.setText("Migration time marker");
         markersCheck.setSelected(true);
         controlsPanel.add(markersCheck);
         add(controlsPanel, java.awt.BorderLayout.NORTH);

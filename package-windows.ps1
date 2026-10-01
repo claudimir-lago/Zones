@@ -47,7 +47,7 @@ $packageName = "Zones-$version-windows-x64"
 $package = Join-Path $imageDest $packageName
 Rename-Item -LiteralPath (Join-Path $imageDest 'Zones') -NewName $packageName
 foreach ($name in @('LICENSE','THIRD-PARTY-NOTICES.md','CITATION.cff','licenses')) { Copy-Item -LiteralPath (Join-Path $SourceDir $name) -Destination $package -Recurse }
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'USER_GUIDE.html') -Destination $package
+foreach ($guide in @('USER_GUIDE.html','USER_GUIDE.md')) { Copy-Item -LiteralPath (Join-Path $SourceDir $guide) -Destination $package }
 New-Item -ItemType Directory -Path (Join-Path $package 'source') | Out-Null
 Run-Native 'git' @('-C',$SourceDir,'archive','--format=zip',"--prefix=Zones-$version/","--output=$(Join-Path $package "source/Zones-$version-source.zip")",$sourceCommit)
 $toolCommit = (& git -C $PSScriptRoot rev-parse HEAD).Trim()

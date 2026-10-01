@@ -6,11 +6,12 @@ import zones.model.*;
 public final class DomainPeakCalculator {
     private final DomainTransform transform;
     private final ElectropherogramDomain domain;
-    public DomainPeakCalculator(ElectropherogramData data,ElectropherogramDomain domain,MobilityCalibration calibration){
-        this.transform=new DomainTransform(data,calibration);this.domain=domain;
+    public DomainPeakCalculator(ElectropherogramData data,ElectropherogramDomain domain,MobilityCalibration calibration){this(data,domain,calibration,false);}
+    public DomainPeakCalculator(ElectropherogramData data,ElectropherogramDomain domain,MobilityCalibration calibration,boolean invertCharge){
+        this.transform=new DomainTransform(data,calibration,invertCharge);this.domain=domain;
     }
     public DomainPeakMetrics metrics(PeakComponent c){
-        if(domain==ElectropherogramDomain.TIME)return new DomainPeakMetrics(c.a1Seconds()/60,c.candidate().observedApexSeconds()/60,c.fittedApexSeconds()/60,c.fwhmSeconds(),c.signedArea(),"min","s","a.u.·s",true);
+        if(domain==ElectropherogramDomain.TIME)return new DomainPeakMetrics(c.a1Seconds(),c.candidate().observedApexSeconds(),c.fittedApexSeconds(),c.fwhmSeconds(),c.signedArea(),"s","s","a.u.·s",true);
         String p=domain==ElectropherogramDomain.CHARGE?"mC":"Ti",a=domain==ElectropherogramDomain.CHARGE?"a.u.·mC":"a.u.·Ti";
         double center=x(c.a1Seconds()),observed=x(c.candidate().observedApexSeconds()),apex=x(c.fittedApexSeconds());
         if(!Double.isFinite(center)||!Double.isFinite(apex))return DomainPeakMetrics.unavailable(p,p,a);
@@ -33,7 +34,7 @@ public final class DomainPeakCalculator {
         for(int i=1;i<=n;i++){double t=lo+(hi-lo)*i/n,v=Math.abs(Hvl.value(t,c.signedArea(),c.a1Seconds(),c.a2Seconds(),c.eta()))-half;
             if((left&&prev<=0&&v>=0)||(!left&&prev>=0&&v<=0)){double f=prev==v?.5:prev/(prev-v);return prevT+f*(t-prevT);}prevT=t;prev=v;}return Double.NaN;
     }
-    /** Numerical area of the fitted component against the displayed coordinate magnitude. */
+    /** Numerical area of the fitted component against path length on the displayed coordinate (orientation independent). */
     private double integrateArea(PeakComponent c){
         double span=Math.max(Math.max(14,Math.sqrt(2*Math.abs(c.eta()))+12)*c.a2Seconds(),3*c.fwhmSeconds()+3*c.a2Seconds());double lo=c.fittedApexSeconds()-span,hi=c.fittedApexSeconds()+span;
         if(!monotonic(lo,hi))return Double.NaN;

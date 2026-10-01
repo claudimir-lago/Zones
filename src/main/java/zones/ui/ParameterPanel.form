@@ -232,7 +232,7 @@
                     </Component>
                     <Component class="javax.swing.JCheckBox" name="advancedCheck">
                       <Properties>
-                        <Property name="text" type="java.lang.String" value="Point details" />
+                        <Property name="text" type="java.lang.String" value="Details" />
                       </Properties>
                       <Constraints>
                         <Constraint layoutClass="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout" value="org.netbeans.modules.form.compat2.layouts.DesignBorderLayout$BorderConstraintsDescription">

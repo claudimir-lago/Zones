@@ -12,14 +12,14 @@ app image, then attaches a ZIP, SHA-256 checksum and standalone English HTML gui
 No AI service or API key is used. There is no scheduled polling, Actions artifact
 storage or dependency cache configured by this workflow.
 
-The guide and packaging tools come from the workflow revision, while application
+The packaging tools come from the workflow revision; both user guides and application
 code always comes from the release tag. This allows the initial v0.2.0 release,
 which predates packaging, to receive a package without changing its tag. Both
 source and packaging revisions are recorded in BUILD-INFO.txt. The bundled runtime
 version is recorded too; later rebuilds may pick up a newer Temurin 17 security update.
 
 For an existing release, open Actions → Windows portable release → Run workflow,
-select main and enter its tag (for example `v0.2.0`). Existing assets are not
+select main and enter its tag (for example `v0.5.2`). Existing assets are not
 overwritten: investigate failures before retrying or replacing a published binary.
 
 The checks exercise reading synthetic data, baseline processing, HVL peak fitting,
@@ -34,7 +34,7 @@ Use Windows x64, PowerShell 7, Git, Maven and Eclipse Temurin JDK 17 (x64).
 Check out the requested release tag in a clean source directory, then run:
 
 ```powershell
-./package-windows.ps1 -SourceDir ../Zones-tag -Tag v0.2.0 -JavaHome 'C:/path/to/temurin-17'
+./package-windows.ps1 -SourceDir ../Zones-tag -Tag v0.5.2 -JavaHome 'C:/path/to/temurin-17'
 ```
 
 Optional: `-Maven` selects Maven's executable; `-MavenRepository` selects a local

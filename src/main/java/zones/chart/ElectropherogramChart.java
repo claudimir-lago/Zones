@@ -37,6 +37,7 @@ public final class ElectropherogramChart extends JPanel {
     private ElectropherogramData displayData;
     private double[] displayTime,displayCharge;
     private DomainTransform domainTransform;
+    private boolean invertCharge;
 
     public ElectropherogramChart() {
         super(new BorderLayout());
@@ -74,16 +75,17 @@ public final class ElectropherogramChart extends JPanel {
     }
 
     public ElectropherogramDomain domain(){return domain;}
-    public void setDomain(ElectropherogramDomain value,MobilityCalibration calibration){
-        domain=value==null?ElectropherogramDomain.TIME:value;mobilityCalibration=calibration;
-        domainAxis.setLabel(domain.axisLabel());
+    public void setDomain(ElectropherogramDomain value,MobilityCalibration calibration){setDomain(value,calibration,invertCharge);}
+    public void setDomain(ElectropherogramDomain value,MobilityCalibration calibration,boolean invertChargeValue){
+        domain=value==null?ElectropherogramDomain.TIME:value;mobilityCalibration=calibration;invertCharge=invertChargeValue;
+        domainAxis.setLabel(domain==ElectropherogramDomain.CHARGE?(invertCharge?"-Charge (mC)":"Charge (mC)"):(domain==ElectropherogramDomain.MOBILITY&&calibration!=null?calibration.mobilityName()+" (Ti)":domain.axisLabel()));
         chart.setBackgroundPaint(DomainTheme.background(domain));
         Color grid=blend(DomainTheme.background(domain),Color.GRAY,.82);
         rawPlot.setDomainGridlinePaint(grid);rawPlot.setRangeGridlinePaint(grid);correctedPlot.setDomainGridlinePaint(grid);correctedPlot.setRangeGridlinePaint(grid);
         refreshAnalysisMarkers();resetZoom();repaint();
     }
     private static Color blend(Color a,Color b,double wa){double wb=1-wa;return new Color((int)(a.getRed()*wa+b.getRed()*wb),(int)(a.getGreen()*wa+b.getGreen()*wb),(int)(a.getBlue()*wa+b.getBlue()*wb));}
-    private String cursorName(){return switch(domain){case TIME->"t (min)";case CHARGE->"|q| (mC)";case MOBILITY->"|mu| (Ti)";};}
+    private String cursorName(){return switch(domain){case TIME->"t (min)";case CHARGE->invertCharge?"-q (mC)":"q (mC)";case MOBILITY->mobilityCalibration!=null&&mobilityCalibration.isEffective()?"mu_eff (Ti)":"mu_app (Ti)";};}
     private static Color color(String key,Color fallback){Color c=UIManager.getColor(key);return c==null?fallback:c;}
     private static XYPlot createPlot(String label) {
         NumberAxis axis=new NumberAxis(label);axis.setAutoRangeIncludesZero(false);
@@ -92,7 +94,7 @@ public final class ElectropherogramChart extends JPanel {
     }
     private void prepareTransform(ElectropherogramData data){
         displayData=data;displayTime=data.timeMinutes();
-        domainTransform=new DomainTransform(data,mobilityCalibration);
+        domainTransform=new DomainTransform(data,mobilityCalibration,invertCharge);
         displayCharge=data.currentMicroamps().map(cur->new ChargeCalculator().fromCurrent(displayTime,cur)).orElseGet(()->data.chargeMilliCoulombs().orElse(null));
     }
     private boolean hasCharge(){return displayCharge!=null;}
@@ -149,19 +151,32 @@ public final class ElectropherogramChart extends JPanel {
         int samples=1000;double[] t=new double[samples],x=new double[samples],total=new double[samples];for(int i=0;i<samples;i++){t[i]=(w.startSeconds()+(w.endSeconds()-w.startSeconds())*i/(samples-1))/60;x[i]=xAtTime(t[i]);total[i]=fit.offset();}
         int dataset=1;for(var c:fit.components()){double[] component=new double[samples],displayComponent=new double[samples];for(int i=0;i<samples;i++){component[i]=Hvl.value(t[i]*60,c.signedArea(),c.fittedCenterSeconds(),c.sigmaSeconds(),c.alpha());displayComponent[i]=fit.offset()+component[i];total[i]+=component[i];}
             if(components){areaSeries(correctedPlot,dataset++,"Peak area rank "+c.candidate().rank(),x,displayComponent,fit.offset(),new Color(20,130,120,51));series(correctedPlot,dataset,"Component rank "+c.candidate().rank(),x,displayComponent,null,new Color(20,130,120),false);correctedPlot.getRenderer(dataset++).setSeriesStroke(0,new BasicStroke(1.4f,BasicStroke.CAP_BUTT,BasicStroke.JOIN_ROUND,1,new float[]{5,4},0));}
-            if(markers){domainMarker(c.candidate().observedApexSeconds(),"Observed",Color.DARK_GRAY,new BasicStroke(1));domainMarker(c.fittedCenterSeconds(),"a1",Color.ORANGE,new BasicStroke(1,BasicStroke.CAP_BUTT,BasicStroke.JOIN_ROUND,1,new float[]{7,5},0));domainMarker(c.fittedApexSeconds(),"Fitted apex",new Color(130,50,190),new BasicStroke(1,BasicStroke.CAP_BUTT,BasicStroke.JOIN_ROUND,1,new float[]{2,4},0));}}
+            if(markers)domainMarker(c.fittedCenterSeconds(),"Migration time",Color.ORANGE,new BasicStroke(1,BasicStroke.CAP_BUTT,BasicStroke.JOIN_ROUND,1,new float[]{7,5},0));}
         if(sum)series(correctedPlot,dataset,"Fitted sum + offset",x,total,null,new Color(220,70,40),false);
     }
     private void domainMarker(double seconds,String label,Color color,BasicStroke stroke){double x=xAtTime(seconds/60);if(!Double.isFinite(x))return;var marker=new ValueMarker(x,color,stroke);marker.setLabel(label);correctedPlot.addDomainMarker(marker);}
-    private static void series(XYPlot plot,int index,String name,double[] x,double[] y,boolean[] mask,Color color,boolean points) {XYSeries s=new XYSeries(name,false,true);for(int i=0;i<x.length;i++)if((mask==null||mask[i])&&Double.isFinite(x[i])&&Double.isFinite(y[i]))s.add(x[i],y[i],false);plot.setDataset(index,new XYSeriesCollection(s));XYLineAndShapeRenderer renderer=new XYLineAndShapeRenderer(!points,points);renderer.setSeriesPaint(0,color);renderer.setSeriesStroke(0,new BasicStroke(index==1?1.8f:1f));renderer.setSeriesShape(0,new Ellipse2D.Double(-1.7,-1.7,3.4,3.4));plot.setRenderer(index,renderer);}
-    private static void areaSeries(XYPlot plot,int index,String name,double[] x,double[] y,double baseline,Color color) {XYSeries fitted=new XYSeries(name,false,true),reference=new XYSeries(name+" reference",false,true);for(int i=0;i<x.length;i++)if(Double.isFinite(x[i])&&Double.isFinite(y[i])){fitted.add(x[i],y[i],false);reference.add(x[i],baseline,false);}var dataset=new XYSeriesCollection();dataset.addSeries(fitted);dataset.addSeries(reference);plot.setDataset(index,dataset);var renderer=new org.jfree.chart.renderer.xy.XYDifferenceRenderer(color,color,false);renderer.setSeriesPaint(0,color);renderer.setSeriesPaint(1,new Color(0,0,0,0));renderer.setSeriesVisibleInLegend(1,false);plot.setRenderer(index,renderer);}
+    private static void series(XYPlot plot,int index,String name,double[] x,double[] y,boolean[] mask,Color color,boolean points) {XYSeries s=new XYSeries(name,false,true);for(int i=0;i<x.length;i++)if((mask==null||mask[i])&&Double.isFinite(x[i])&&Double.isFinite(y[i]))s.add(x[i],y[i],false);plot.setDataset(index,new XYSeriesCollection(s));XYLineAndShapeRenderer renderer=new XYLineAndShapeRenderer(!points,points);renderer.setSeriesPaint(0,color);renderer.setSeriesStroke(0,new BasicStroke(index==1?1.8f:1f));renderer.setSeriesShape(0,new Ellipse2D.Double(-0.9,-0.9,1.8,1.8));plot.setRenderer(index,renderer);}
+    private static void areaSeries(XYPlot plot,int index,String name,double[] x,double[] y,double baseline,Color color) {
+        java.util.List<double[]> points=new java.util.ArrayList<>();
+        for(int i=0;i<x.length;i++)if(Double.isFinite(x[i])&&Double.isFinite(y[i]))points.add(new double[]{x[i],y[i]});
+        // XYDifferenceRenderer expects an ordered domain. Mobility is commonly traversed in
+        // decreasing x as migration time increases, so sort only the filled-area dataset.
+        points.sort(java.util.Comparator.comparingDouble(a->a[0]));
+        XYSeries fitted=new XYSeries(name,false,true),reference=new XYSeries(name+" reference",false,true);
+        for(double[] point:points){fitted.add(point[0],point[1],false);reference.add(point[0],baseline,false);}
+        var dataset=new XYSeriesCollection();dataset.addSeries(fitted);dataset.addSeries(reference);plot.setDataset(index,dataset);
+        var renderer=new org.jfree.chart.renderer.xy.XYDifferenceRenderer(color,color,false);renderer.setSeriesPaint(0,color);renderer.setSeriesPaint(1,new Color(0,0,0,0));renderer.setSeriesVisibleInLegend(1,false);plot.setRenderer(index,renderer);
+    }
     public void overlays(boolean high,boolean recovered,boolean original,boolean corrected) {if(rawPlot.getRenderer(2)!=null)rawPlot.getRenderer(2).setSeriesVisible(0,high);if(rawPlot.getRenderer(3)!=null)rawPlot.getRenderer(3).setSeriesVisible(0,recovered);if(rawVisible!=original){if(original)combined.add(rawPlot,3);else combined.remove(rawPlot);rawVisible=original;}if(correctedVisible!=corrected){if(corrected)combined.add(correctedPlot,2);else combined.remove(correctedPlot);correctedVisible=corrected;}}
     public void setStale(boolean stale){if(rawPlot.getRenderer(0)!=null)rawPlot.getRenderer(0).setSeriesPaint(0,stale?Color.GRAY:color("Baseline.raw",Color.BLUE));if(rawPlot.getRenderer(1)!=null)rawPlot.getRenderer(1).setSeriesPaint(0,stale?Color.LIGHT_GRAY:color("Baseline.baseline",Color.ORANGE));if(correctedPlot.getRenderer(0)!=null)correctedPlot.getRenderer(0).setSeriesPaint(0,stale?Color.GRAY:color("Baseline.corrected",Color.BLUE));}
     public void zoomToWindow(PeakWindow window,double marginMinutes){double a=xAtTime(window.startSeconds()/60),b=xAtTime(window.endSeconds()/60);if(!Double.isFinite(a)||!Double.isFinite(b))return;double lo=Math.min(a,b),hi=Math.max(a,b),margin=domain==ElectropherogramDomain.TIME?marginMinutes:Math.max((hi-lo)*.08,Math.ulp(Math.max(Math.abs(lo),Math.abs(hi))));domainAxis.setRange(lo-margin,hi+margin);rawPlot.getRangeAxis().setAutoRange(true);correctedPlot.getRangeAxis().setAutoRange(true);}
     public void resetZoom(){
         panel.restoreAutoBounds();
-        if(domain==ElectropherogramDomain.MOBILITY && domainAxis.getUpperBound()>DomainTransform.MOBILITY_DISPLAY_LIMIT_TI)
-            domainAxis.setUpperBound(DomainTransform.MOBILITY_DISPLAY_LIMIT_TI);
+        if(domain==ElectropherogramDomain.MOBILITY){
+            double lo=Math.max(domainAxis.getLowerBound(),-DomainTransform.MOBILITY_DISPLAY_LIMIT_TI);
+            double hi=Math.min(domainAxis.getUpperBound(), DomainTransform.MOBILITY_DISPLAY_LIMIT_TI);
+            if(lo<hi)domainAxis.setRange(lo,hi);
+        }
     }
     public void zoomIn(){panel.zoomInBoth(panel.getWidth()/2.0,panel.getHeight()/2.0);}
     public void zoomOut(){panel.zoomOutBoth(panel.getWidth()/2.0,panel.getHeight()/2.0);}
