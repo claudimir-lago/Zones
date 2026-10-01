@@ -18,7 +18,7 @@ At this stage:
 - charge is calculated from synchronized current data by trapezoidal integration and displayed as magnitude `|q|` in **mC**;
 - mobility is displayed as magnitude `|μ|` in **Ti**, where `1 Ti = 1e-9 m² V⁻¹ s⁻¹`;
 - the mobility display/analysis window excludes values above 1000 Ti;
-- mobility currently corresponds to **apparent mobility** unless EOF compensation is explicitly introduced;
+- mobility uses a **two-standard effective-mobility calibration**, including a fitted EOF offset, and is displayed as magnitude;
 - Time, Charge, and Mobility use distinct interface themes to make the active domain visually explicit.
 
 ## Scientific basis
@@ -30,6 +30,16 @@ The charge- and mobility-domain implementation is based primarily on:
 The current implementation uses trapezoidal numerical integration for charge calculation rather than the right-Riemann implementation used in the original paper.
 
 ## Build and run
+
+### Ready-to-run Windows package
+
+Download `Zones-0.2.0-windows-x64.zip` from the [v0.2.0 release](https://github.com/claudimir-lago/Zones/releases/tag/v0.2.0), extract the entire archive, and open `Zones.exe`. Java is included.
+
+The English [User Guide](USER_GUIDE.html) is included as `USER_GUIDE.html` and can be opened offline in a browser. It covers processing controls, mobility calibration, exports and limitations.
+
+Packages are built automatically for published releases. See [PACKAGING.md](PACKAGING.md) for the release procedure and local builds.
+
+### Build from source
 
 Requirements:
 
