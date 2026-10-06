@@ -18,6 +18,8 @@ public class ParameterPanel extends JPanel {
     private double samplingIntervalSeconds=PhysicalBaselineParameters.REFERENCE_INTERVAL_SECONDS;
     public ParameterPanel() {
         initComponents();
+        DomainTheme.themeButton(resetButton);
+        DomainTheme.themeButton(applyButton);
         numStdSpinner.setModel(new SpinnerNumberModel(3.0,2.0,3.5,0.05));
         logLambdaSpinner.setModel(new SpinnerNumberModel(9.0,5.0,15.0,0.1));
         scaleCountSpinner.setModel(new SpinnerNumberModel(8,1,64,1));
@@ -34,11 +36,19 @@ public class ParameterPanel extends JPanel {
             if(text.getFormatter() instanceof javax.swing.text.NumberFormatter formatter)formatter.setAllowsInvalid(true);
         }
         lambdaSlider.setMinimum(50);lambdaSlider.setMaximum(150);lambdaSlider.setMajorTickSpacing(20);lambdaSlider.setPaintTicks(true);
-        ParameterHelp.install(numStdSpinner,"numStd");ParameterHelp.install(logLambdaSpinner,"lambda");ParameterHelp.install(lambdaSlider,"lambda");
-        ParameterHelp.install(minLengthSpinner,"minLength");ParameterHelp.install(votesSpinner,"votes");
-        ParameterHelp.install(widthMinimumSpinner,"width");ParameterHelp.install(widthMaximumSpinner,"width");ParameterHelp.install(scaleCountSpinner,"count");
-        ParameterHelp.install(windowSpinner,"window");ParameterHelp.install(noiseSpinner,"noise");ParameterHelp.install(slopeSpinner,"slope");ParameterHelp.install(runSpinner,"run");
-        ParameterHelp.install(durationSpinner,"spikes");ParameterHelp.install(medianCheck,"spikes");ParameterHelp.install(chargeCheck,"charge");
+        // Keep help on labels rather than on JSpinner itself. FlatLaf propagates a spinner's
+        // tooltip to its arrow buttons, which produces distracting truncated popups.
+        ParameterHelp.install(numStdLabel,"numStd");ParameterHelp.install(lambdaLabel,"lambda");
+        ParameterHelp.install(minLengthLabel,"minLength");ParameterHelp.install(votesLabel,"votes");
+        ParameterHelp.install(widthMinimumLabel,"width");ParameterHelp.install(widthMaximumLabel,"width");ParameterHelp.install(scaleCountLabel,"count");
+        ParameterHelp.install(windowLabel,"window");ParameterHelp.install(noiseLabel,"noise");ParameterHelp.install(slopeLabel,"slope");ParameterHelp.install(runLabel,"run");
+        ParameterHelp.install(durationLabel,"spikes");ParameterHelp.install(medianCheck,"spikes");ParameterHelp.install(chargeCheck,"charge");
+        // Use a fixed editor width and a layout that reserves the spinner column.
+        // GridLayout may compress spinner arrow buttons when the parameter panel is narrow.
+        installStableParameterLayout();
+        for(JSpinner spinner:spinners()) {
+            configureSpinner(spinner);
+        }
         settingsScroll.getVerticalScrollBar().setUnitIncrement(16);
         setAnalysisParameters(AnalysisParameters.defaults());
         loadPersistedSettings();
@@ -54,6 +64,42 @@ public class ParameterPanel extends JPanel {
         advancedCheck.addActionListener(e->{conversionArea.setVisible(advancedCheck.isSelected());revalidate();});
         conversionArea.setVisible(false);
         localPanel.setVisible(false); // Local anchor recovery was removed after TestHVL09 validation.
+    }
+    private static void disableTooltips(java.awt.Component component){
+        if(component instanceof JComponent jc){
+            jc.setToolTipText(null);
+            ToolTipManager.sharedInstance().unregisterComponent(jc);
+        }
+        if(component instanceof java.awt.Container container)
+            for(java.awt.Component child:container.getComponents())disableTooltips(child);
+    }
+    private static void configureSpinner(JSpinner spinner){
+        java.awt.Dimension size=new java.awt.Dimension(132,28);
+        spinner.setPreferredSize(size);spinner.setMinimumSize(size);
+        if(spinner.getEditor() instanceof JSpinner.DefaultEditor editor){
+            editor.getTextField().setColumns(9);
+            editor.getTextField().setHorizontalAlignment(JTextField.RIGHT);
+        }
+        disableTooltips(spinner);
+    }
+    private void installStableParameterLayout(){
+        valuesPanel.removeAll();
+        valuesPanel.setLayout(new java.awt.GridBagLayout());
+        java.awt.GridBagConstraints label=new java.awt.GridBagConstraints();
+        label.gridx=0;label.weightx=1.0;label.fill=java.awt.GridBagConstraints.HORIZONTAL;
+        label.anchor=java.awt.GridBagConstraints.LINE_START;label.insets=new java.awt.Insets(3,2,3,10);
+        java.awt.GridBagConstraints field=new java.awt.GridBagConstraints();
+        field.gridx=1;field.weightx=0.0;field.fill=java.awt.GridBagConstraints.NONE;
+        field.anchor=java.awt.GridBagConstraints.LINE_END;field.insets=new java.awt.Insets(3,2,3,2);
+        javax.swing.JLabel[] labels={numStdLabel,minLengthLabel,widthMinimumLabel,widthMaximumLabel,scaleCountLabel,votesLabel};
+        JSpinner[] fields={numStdSpinner,minLengthSpinner,widthMinimumSpinner,widthMaximumSpinner,scaleCountSpinner,votesSpinner};
+        for(int row=0;row<labels.length;row++){
+            label.gridy=row;field.gridy=row;valuesPanel.add(labels[row],label);valuesPanel.add(fields[row],field);
+        }
+        durationPanel.removeAll();durationPanel.setLayout(new java.awt.BorderLayout(10,0));
+        durationPanel.add(durationLabel,java.awt.BorderLayout.CENTER);durationPanel.add(durationSpinner,java.awt.BorderLayout.EAST);
+        setMinimumSize(new java.awt.Dimension(430,520));
+        setPreferredSize(new java.awt.Dimension(445,520));
     }
     private void loadPersistedSettings(){
         if(!preferencesEnabled())return;
@@ -161,6 +207,7 @@ public class ParameterPanel extends JPanel {
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
+
         settingsScroll = new javax.swing.JScrollPane();
         contentPanel = new javax.swing.JPanel();
         spikePanel = new javax.swing.JPanel();
@@ -203,130 +250,169 @@ public class ParameterPanel extends JPanel {
         actionsPanel = new javax.swing.JPanel();
         resetButton = new javax.swing.JButton();
         applyButton = new javax.swing.JButton();
+
         setBorder(javax.swing.BorderFactory.createTitledBorder("Parameters"));
-        setPreferredSize(new java.awt.Dimension(365, 520));
+        setPreferredSize(new java.awt.Dimension(445, 520));
         setLayout(new java.awt.BorderLayout(4, 4));
+
         contentPanel.setLayout(new java.awt.BorderLayout(4, 8));
+
         spikePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Outlier removal"));
         spikePanel.setLayout(new java.awt.BorderLayout(4, 4));
+
         medianCheck.setText("Enable selective MMR");
         medianCheck.setSelected(true);
         spikePanel.add(medianCheck, java.awt.BorderLayout.NORTH);
+
         durationPanel.setLayout(new java.awt.GridLayout(1, 2, 4, 4));
+
         durationLabel.setText("Characteristic duration (s)");
         durationPanel.add(durationLabel);
         durationPanel.add(durationSpinner);
+
         spikePanel.add(durationPanel, java.awt.BorderLayout.CENTER);
+
         chargeCheck.setText("Recalculate charge from current");
         spikePanel.add(chargeCheck, java.awt.BorderLayout.SOUTH);
+
         contentPanel.add(spikePanel, java.awt.BorderLayout.NORTH);
+
         baselinePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Baseline"));
         baselinePanel.setLayout(new java.awt.BorderLayout(4, 8));
+
         valuesPanel.setLayout(new java.awt.GridLayout(6, 2, 6, 6));
-        numStdLabel.setText("num_std");
+
+        numStdLabel.setText("FABC threshold (σ)");
         valuesPanel.add(numStdLabel);
         valuesPanel.add(numStdSpinner);
+
         minLengthLabel.setText("Minimum baseline (s)");
         valuesPanel.add(minLengthLabel);
         valuesPanel.add(minLengthSpinner);
+
         widthMinimumLabel.setText("Minimum peak width (s)");
         valuesPanel.add(widthMinimumLabel);
         valuesPanel.add(widthMinimumSpinner);
+
         widthMaximumLabel.setText("Maximum peak width (s)");
         valuesPanel.add(widthMaximumLabel);
         valuesPanel.add(widthMaximumSpinner);
+
         scaleCountLabel.setText("Number of scales");
         valuesPanel.add(scaleCountLabel);
         valuesPanel.add(scaleCountSpinner);
+
         votesLabel.setText("K (votes)");
         valuesPanel.add(votesLabel);
         valuesPanel.add(votesSpinner);
+
         baselinePanel.add(valuesPanel, java.awt.BorderLayout.NORTH);
+
         smoothnessPanel.setLayout(new java.awt.BorderLayout(4, 4));
-        lambdaLabel.setText("Baseline stiffness — log10(lambda)");
+
+        lambdaLabel.setText("Baseline stiffness — log(λ)");
         smoothnessPanel.add(lambdaLabel, java.awt.BorderLayout.NORTH);
         smoothnessPanel.add(lambdaSlider, java.awt.BorderLayout.CENTER);
         smoothnessPanel.add(logLambdaSpinner, java.awt.BorderLayout.SOUTH);
+
         baselinePanel.add(smoothnessPanel, java.awt.BorderLayout.CENTER);
+
         conversionPanel.setLayout(new java.awt.BorderLayout(4, 4));
+
         conversionStatus.setText("Generated scales");
         conversionPanel.add(conversionStatus, java.awt.BorderLayout.NORTH);
+
         advancedCheck.setText("Details");
         conversionPanel.add(advancedCheck, java.awt.BorderLayout.CENTER);
+
         conversionArea.setEditable(false);
         conversionArea.setRows(5);
         conversionArea.setColumns(24);
         conversionArea.setLineWrap(true);
         conversionArea.setWrapStyleWord(true);
         conversionPanel.add(conversionArea, java.awt.BorderLayout.SOUTH);
+
         baselinePanel.add(conversionPanel, java.awt.BorderLayout.SOUTH);
+
         contentPanel.add(baselinePanel, java.awt.BorderLayout.CENTER);
+
         localPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Local recovery (disabled)"));
         localPanel.setLayout(new java.awt.GridLayout(4, 2, 6, 6));
+
         windowLabel.setText("Local window (s)");
         localPanel.add(windowLabel);
         localPanel.add(windowSpinner);
+
         noiseLabel.setText("Noise factor");
         localPanel.add(noiseLabel);
         localPanel.add(noiseSpinner);
+
         slopeLabel.setText("Slope factor");
         localPanel.add(slopeLabel);
         localPanel.add(slopeSpinner);
+
         runLabel.setText("Minimum run (s)");
         localPanel.add(runLabel);
         localPanel.add(runSpinner);
+
         contentPanel.add(localPanel, java.awt.BorderLayout.SOUTH);
+
         settingsScroll.setViewportView(contentPanel);
+
         add(settingsScroll, java.awt.BorderLayout.CENTER);
-        actionsPanel.setLayout(new java.awt.FlowLayout(2, 6, 6));
+
+        actionsPanel.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 6));
+
         resetButton.setText("Restore defaults");
         actionsPanel.add(resetButton);
+
         applyButton.setText("Recalculate");
         actionsPanel.add(applyButton);
+
         add(actionsPanel, java.awt.BorderLayout.SOUTH);
     }// </editor-fold>//GEN-END:initComponents
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JScrollPane settingsScroll;
-    private javax.swing.JPanel contentPanel;
-    private javax.swing.JPanel spikePanel;
-    private javax.swing.JCheckBox medianCheck;
-    private javax.swing.JPanel durationPanel;
-    private javax.swing.JLabel durationLabel;
-    private javax.swing.JSpinner durationSpinner;
-    private javax.swing.JCheckBox chargeCheck;
+    private javax.swing.JPanel actionsPanel;
+    private javax.swing.JCheckBox advancedCheck;
+    private javax.swing.JButton applyButton;
     private javax.swing.JPanel baselinePanel;
-    private javax.swing.JPanel valuesPanel;
-    private javax.swing.JLabel numStdLabel;
-    private javax.swing.JSpinner numStdSpinner;
-    private javax.swing.JLabel minLengthLabel;
-    private javax.swing.JSpinner minLengthSpinner;
-    private javax.swing.JLabel widthMinimumLabel;
-    private javax.swing.JSpinner widthMinimumSpinner;
-    private javax.swing.JLabel widthMaximumLabel;
-    private javax.swing.JSpinner widthMaximumSpinner;
-    private javax.swing.JLabel scaleCountLabel;
-    private javax.swing.JSpinner scaleCountSpinner;
-    private javax.swing.JLabel votesLabel;
-    private javax.swing.JSpinner votesSpinner;
-    private javax.swing.JPanel smoothnessPanel;
-    private javax.swing.JLabel lambdaLabel;
-    private javax.swing.JSlider lambdaSlider;
-    private javax.swing.JSpinner logLambdaSpinner;
+    private javax.swing.JCheckBox chargeCheck;
+    private javax.swing.JPanel contentPanel;
+    private javax.swing.JTextArea conversionArea;
     private javax.swing.JPanel conversionPanel;
     private javax.swing.JLabel conversionStatus;
-    private javax.swing.JCheckBox advancedCheck;
-    private javax.swing.JTextArea conversionArea;
+    private javax.swing.JLabel durationLabel;
+    private javax.swing.JPanel durationPanel;
+    private javax.swing.JSpinner durationSpinner;
+    private javax.swing.JLabel lambdaLabel;
+    private javax.swing.JSlider lambdaSlider;
     private javax.swing.JPanel localPanel;
-    private javax.swing.JLabel windowLabel;
-    private javax.swing.JSpinner windowSpinner;
+    private javax.swing.JSpinner logLambdaSpinner;
+    private javax.swing.JCheckBox medianCheck;
+    private javax.swing.JLabel minLengthLabel;
+    private javax.swing.JSpinner minLengthSpinner;
     private javax.swing.JLabel noiseLabel;
     private javax.swing.JSpinner noiseSpinner;
-    private javax.swing.JLabel slopeLabel;
-    private javax.swing.JSpinner slopeSpinner;
+    private javax.swing.JLabel numStdLabel;
+    private javax.swing.JSpinner numStdSpinner;
+    private javax.swing.JButton resetButton;
     private javax.swing.JLabel runLabel;
     private javax.swing.JSpinner runSpinner;
-    private javax.swing.JPanel actionsPanel;
-    private javax.swing.JButton resetButton;
-    private javax.swing.JButton applyButton;
+    private javax.swing.JLabel scaleCountLabel;
+    private javax.swing.JSpinner scaleCountSpinner;
+    private javax.swing.JScrollPane settingsScroll;
+    private javax.swing.JLabel slopeLabel;
+    private javax.swing.JSpinner slopeSpinner;
+    private javax.swing.JPanel smoothnessPanel;
+    private javax.swing.JPanel spikePanel;
+    private javax.swing.JPanel valuesPanel;
+    private javax.swing.JLabel votesLabel;
+    private javax.swing.JSpinner votesSpinner;
+    private javax.swing.JLabel widthMaximumLabel;
+    private javax.swing.JSpinner widthMaximumSpinner;
+    private javax.swing.JLabel widthMinimumLabel;
+    private javax.swing.JSpinner widthMinimumSpinner;
+    private javax.swing.JLabel windowLabel;
+    private javax.swing.JSpinner windowSpinner;
     // End of variables declaration//GEN-END:variables
 }

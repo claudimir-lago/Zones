@@ -69,4 +69,23 @@ class DomainTransformTest {
         assertEquals(-12,inv.xAtTime(ElectropherogramDomain.CHARGE,t[2]),1e-12);
     }
 
+    @Test void voltageCalibrationCreatesMobilityWithoutChargeChannel(){
+        double[] t={0.5,1.0,2.0,3.0};
+        var d=new ElectropherogramData(Path.of("legacy.dat"),t,Map.of(DetectorChannel.LEFT,new double[]{0,1,0,0}),null,null);
+        var c=MobilityCalibration.fromVoltage(20.0,0.50,0.25,25.0);
+        var tr=new DomainTransform(d,c);
+        assertFalse(tr.hasCharge());
+        assertEquals(10.4166666667,tr.xAtTime(ElectropherogramDomain.MOBILITY,10.0),1e-8);
+    }
+
+    @Test void twoStandardsCanCalibrateEffectiveMobilityFromTime(){
+        // k=120 Ti*min and EOF=20 Ti: t1=1.2 min for 80 Ti, t2=2.0 min for 40 Ti.
+        var c=MobilityCalibration.fromTwoStandardsByTime(1.2,80.0,2.0,40.0);
+        assertTrue(c.isEffective());
+        assertTrue(c.usesTime());
+        assertEquals(120.0,c.kTiMinutes(),1e-10);
+        assertEquals(20.0,c.eofMobilityTi(),1e-10);
+        assertEquals(55.0,c.mobilityTiFromTimeMinutes(1.6),1e-10);
+    }
+
 }

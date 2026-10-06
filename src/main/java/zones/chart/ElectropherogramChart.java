@@ -27,6 +27,7 @@ public final class ElectropherogramChart extends JPanel {
     private final ChartPanel panel=new ChartPanel(chart);
     private boolean correctedVisible=true,rawVisible=true;
     private Consumer<String> cursorListener=text->{};
+    private Consumer<Double> correctedClickListener=x->{};
     private Runnable analysisRangeListener=()->{};
     private double analysisStart=Double.NaN,analysisEnd=Double.NaN;
     private int draggingRange=0;
@@ -42,7 +43,7 @@ public final class ElectropherogramChart extends JPanel {
     public ElectropherogramChart() {
         super(new BorderLayout());
         domainAxis.setAutoRangeIncludesZero(false);
-        combined.setGap(18);combined.add(rawPlot,3);combined.add(correctedPlot,2);
+        combined.setGap(18);combined.add(rawPlot,1);combined.add(correctedPlot,1);
         combined.setDomainPannable(true);rawPlot.setRangePannable(true);correctedPlot.setRangePannable(true);
         chart.setBackgroundPaint(DomainTheme.background(domain));
         panel.setMouseWheelEnabled(true);panel.setMouseZoomable(true,false);
@@ -50,7 +51,15 @@ public final class ElectropherogramChart extends JPanel {
         panel.setMaximumDrawWidth(10000);panel.setMaximumDrawHeight(10000);
         panel.setPreferredSize(new Dimension(880,540));
         panel.addChartMouseListener(new ChartMouseListener() {
-            @Override public void chartMouseClicked(ChartMouseEvent e) {}
+            @Override public void chartMouseClicked(ChartMouseEvent e) {
+                if(e.getTrigger().getClickCount()!=2)return;
+                var point=panel.translateScreenToJava2D(e.getTrigger().getPoint());
+                var info=panel.getChartRenderingInfo().getPlotInfo();int index=info.getSubplotIndex(point);
+                if(index<0)return;XYPlot plot=(XYPlot)combined.getSubplots().get(index);if(plot!=correctedPlot)return;
+                var area=info.getSubplotInfo(index).getDataArea();
+                double x=domainAxis.java2DToValue(point.getX(),area,plot.getDomainAxisEdge());
+                correctedClickListener.accept(x);
+            }
             @Override public void chartMouseMoved(ChartMouseEvent e) {
                 var point=panel.translateScreenToJava2D(e.getTrigger().getPoint());
                 var info=panel.getChartRenderingInfo().getPlotInfo();int index=info.getSubplotIndex(point);
@@ -78,7 +87,7 @@ public final class ElectropherogramChart extends JPanel {
     public void setDomain(ElectropherogramDomain value,MobilityCalibration calibration){setDomain(value,calibration,invertCharge);}
     public void setDomain(ElectropherogramDomain value,MobilityCalibration calibration,boolean invertChargeValue){
         domain=value==null?ElectropherogramDomain.TIME:value;mobilityCalibration=calibration;invertCharge=invertChargeValue;
-        domainAxis.setLabel(domain==ElectropherogramDomain.CHARGE?(invertCharge?"-Charge (mC)":"Charge (mC)"):(domain==ElectropherogramDomain.MOBILITY&&calibration!=null?calibration.mobilityName()+" (Ti)":domain.axisLabel()));
+        domainAxis.setLabel(domain==ElectropherogramDomain.CHARGE?(invertCharge?"-Charge (mC)":"Charge (mC)"):(domain==ElectropherogramDomain.MOBILITY&&calibration!=null?calibration.mobilityName()+" at 25 °C (Ti)":domain.axisLabel()));
         chart.setBackgroundPaint(DomainTheme.background(domain));
         Color grid=blend(DomainTheme.background(domain),Color.GRAY,.82);
         rawPlot.setDomainGridlinePaint(grid);rawPlot.setRangeGridlinePaint(grid);correctedPlot.setDomainGridlinePaint(grid);correctedPlot.setRangeGridlinePaint(grid);
@@ -127,6 +136,7 @@ public final class ElectropherogramChart extends JPanel {
     public void setAnalysisRangeMinutes(double start,double end){if(Double.isFinite(start)&&Double.isFinite(end)&&end>start){analysisStart=start;analysisEnd=end;refreshAnalysisMarkers();}}
     public void onAnalysisRangeChanged(Runnable listener){analysisRangeListener=listener==null?()->{}:listener;}
     public void onCursor(Consumer<String> listener){cursorListener=listener;}
+    public void onCorrectedClick(Consumer<Double> listener){correctedClickListener=listener==null?x->{}:listener;}
     public void showSignal(ElectropherogramData data,DetectorChannel detector) {
         prepareTransform(data);showPeakFit(null,false,false,false);for(int i=0;i<5;i++)rawPlot.setDataset(i,null);correctedPlot.setDataset(null);
         double[] tx=data.timeMinutes();series(rawPlot,0,detector.toString(),xFor(data),data.signal(detector),null,color("Baseline.raw",Color.BLUE),false);
@@ -167,7 +177,7 @@ public final class ElectropherogramChart extends JPanel {
         var dataset=new XYSeriesCollection();dataset.addSeries(fitted);dataset.addSeries(reference);plot.setDataset(index,dataset);
         var renderer=new org.jfree.chart.renderer.xy.XYDifferenceRenderer(color,color,false);renderer.setSeriesPaint(0,color);renderer.setSeriesPaint(1,new Color(0,0,0,0));renderer.setSeriesVisibleInLegend(1,false);plot.setRenderer(index,renderer);
     }
-    public void overlays(boolean high,boolean recovered,boolean original,boolean corrected) {if(rawPlot.getRenderer(2)!=null)rawPlot.getRenderer(2).setSeriesVisible(0,high);if(rawPlot.getRenderer(3)!=null)rawPlot.getRenderer(3).setSeriesVisible(0,recovered);if(rawVisible!=original){if(original)combined.add(rawPlot,3);else combined.remove(rawPlot);rawVisible=original;}if(correctedVisible!=corrected){if(corrected)combined.add(correctedPlot,2);else combined.remove(correctedPlot);correctedVisible=corrected;}}
+    public void overlays(boolean high,boolean recovered,boolean original,boolean corrected) {if(rawPlot.getRenderer(2)!=null)rawPlot.getRenderer(2).setSeriesVisible(0,high);if(rawPlot.getRenderer(3)!=null)rawPlot.getRenderer(3).setSeriesVisible(0,recovered);if(rawVisible!=original){if(original)combined.add(rawPlot,1);else combined.remove(rawPlot);rawVisible=original;}if(correctedVisible!=corrected){if(corrected)combined.add(correctedPlot,1);else combined.remove(correctedPlot);correctedVisible=corrected;}}
     public void setStale(boolean stale){if(rawPlot.getRenderer(0)!=null)rawPlot.getRenderer(0).setSeriesPaint(0,stale?Color.GRAY:color("Baseline.raw",Color.BLUE));if(rawPlot.getRenderer(1)!=null)rawPlot.getRenderer(1).setSeriesPaint(0,stale?Color.LIGHT_GRAY:color("Baseline.baseline",Color.ORANGE));if(correctedPlot.getRenderer(0)!=null)correctedPlot.getRenderer(0).setSeriesPaint(0,stale?Color.GRAY:color("Baseline.corrected",Color.BLUE));}
     public void zoomToWindow(PeakWindow window,double marginMinutes){double a=xAtTime(window.startSeconds()/60),b=xAtTime(window.endSeconds()/60);if(!Double.isFinite(a)||!Double.isFinite(b))return;double lo=Math.min(a,b),hi=Math.max(a,b),margin=domain==ElectropherogramDomain.TIME?marginMinutes:Math.max((hi-lo)*.08,Math.ulp(Math.max(Math.abs(lo),Math.abs(hi))));domainAxis.setRange(lo-margin,hi+margin);rawPlot.getRangeAxis().setAutoRange(true);correctedPlot.getRangeAxis().setAutoRange(true);}
     public void resetZoom(){

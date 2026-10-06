@@ -42,7 +42,7 @@
         </Component>
         <Component class="javax.swing.JButton" name="exportButton">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Export ZIP…" />
+            <Property name="text" type="java.lang.String" value="Export results" />
           </Properties>
         </Component>
         <Component class="javax.swing.JCheckBox" name="componentsCheck">

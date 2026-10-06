@@ -6,7 +6,7 @@ public final class ParameterHelp {
     private ParameterHelp(){}
     private static final Map<String,String> TEXT=Map.ofEntries(
         Map.entry("spikes","Selective moving-median residual (MMR) outlier detection. The median is used only to detect candidates; non-candidate samples are preserved exactly. Candidate runs above 5 robust sigma are reconstructed by a quadratic fitted to the 2 samples before and 2 after the run. Characteristic duration defines the median half-window."),
-        Map.entry("lambda","log10(lambda), from 5 to 15. A value of 9 means lambda = 1e9. Higher values make the baseline stiffer; lower values make it more flexible."),
+        Map.entry("lambda","log(λ), from 5 to 15. A value of 9 means λ = 1e9. Higher values make the baseline stiffer; lower values make it more flexible."),
         Map.entry("numStd","FABC baseline-versus-peak classification. Range 2.0–3.5; default 3.0. Higher values tend to accept more baseline; lower values are more conservative. This is not LOD/LOQ."),
         Map.entry("width","Scale defines the characteristic time width of events considered compatible with a CE peak. The minimum peak width sets the first scale; larger scales progressively represent broader peak-like structures. Internally the algorithm uses samples, but Zones presents the scales in seconds."),
         Map.entry("count","Requested number of time scales spanning the minimum-to-maximum peak-width range. Each scale asks whether structures of that characteristic duration look peak-like; duplicate scales after sampling conversion are removed."),

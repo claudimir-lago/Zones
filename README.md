@@ -8,7 +8,7 @@ Zones was initially derived from **jBaseline 0.2.2**. The time-domain preprocess
 
 ## Current version
 
-**Zones 0.5.2**
+**Zones 0.7.4**
 
 At this stage:
 
@@ -19,8 +19,12 @@ At this stage:
 - charge is calculated from synchronized current data by trapezoidal integration and displayed with its natural sign in **mC**; an explicit **Invert charge axis** option displays `-Charge`;
 - mobility is displayed with its natural sign in **Ti**, where `1 Ti = 1e-9 m² V⁻¹ s⁻¹`; the axis is identified as apparent or effective according to the calibration mode;
 - mobility values with `|μ| > 1000 Ti` are excluded from the display/analysis window rather than truncated;
-- mobility calibration supports **instrumental parameters only** (apparent mobility), **two effective-mobility standards** (effective mobility), or **instrumental parameters + one effective-mobility reference** (effective mobility);
-- mobility standards are selected directly from **Peak analysis**, so migration charge is obtained automatically from the fitted peak;
+- mobility calibration supports **instrumental parameters only** (apparent mobility), **two effective-mobility standards** (effective mobility), or **instrumental parameters + one effective-mobility reference** (effective mobility); instrumental scaling can use either **charge + BGE conductivity + capillary i.d.** or the classical **applied voltage + total capillary length** formulation;
+- the voltage/time route allows mobility spectra to be obtained from legacy electropherograms that contain no current or charge data;
+- mobility standards are selected directly from **Peak analysis**; Zones uses migration charge when available and migration time when the calibration basis requires it;
+- aqueous conductivity and mobility-reference values can be entered at their source temperatures and are normalized to **25 °C** using the water-viscosity model before mobility calibration;
+- double-clicking a fitted-peak region in the **Corrected C4D** plot selects the corresponding Quantitation row, while unmatched double-clicks generate a warning;
+- user-oriented export produces TAB-delimited `.csv` files containing reproducibility metadata, quantitation in all available domains, and optional processed electropherograms;
 - Time, Charge, and Mobility use distinct interface themes to make the active domain visually explicit.
 - an **About** dialog reports the program version and provides direct access to the GitHub repository, user manual, scientific reference, and license information.
 
@@ -35,10 +39,6 @@ The current implementation uses trapezoidal numerical integration for charge cal
 ## User manual
 
 Read the GitHub-rendered [`USER_GUIDE.md`](USER_GUIDE.md). An offline browser version is also included as `USER_GUIDE.html`.
-
-## Windows portable package
-
-Download `Zones-0.5.2-windows-x64.zip` from the [v0.5.2 release](https://github.com/claudimir-lago/Zones/releases/tag/v0.5.2), extract the entire archive, and open `Zones.exe`. Java is included. See [PACKAGING.md](PACKAGING.md) for the build procedure.
 
 ## Build and run
 
@@ -78,6 +78,7 @@ The 2nd C4D is selected by default when it contains a varying signal. If it is c
 4. **Peak windows** — isolated, same-polarity overlap, or bipolar/composite.
 5. **HVL fitting** — Haarhoff–Van der Linde components parameterized as area, `a1`, `a2`, and dimensionless `eta`.
 6. **Domain transformation** — peak locations identified in the time domain are mapped to signed charge and calibrated apparent- or effective-mobility coordinates for domain-specific metrics.
+7. **Thermal normalization** — for aqueous systems, conductivity and mobility references are normalized to 25 °C through the inverse-viscosity dependence before mobility calibration.
 
 ## Analysis range
 
@@ -85,7 +86,7 @@ Two vertical cursors on the original electropherogram define the analysis range.
 
 ## Results and export
 
-The **Quantitation** table reports peak metrics for the active domain. A TAB-separated export and a detailed ZIP export are available for diagnostics and reproducibility.
+The **Quantitation** table reports peak metrics for the active domain. **Export results** can create either a ZIP archive or individual uncompressed files. The export contains a TAB-delimited `quantitation.csv`, complete processing/calibration metadata, and optional processed electropherograms in time, charge, and mobility domains. The `.csv` extension is retained for compatibility, but columns are always separated by TAB. A separate **Developer ZIP** keeps detailed diagnostic data for software development.
 
 ## Repository structure
 

@@ -62,7 +62,7 @@
           <SubComponents>
             <Component class="javax.swing.JButton" name="openButton">
               <Properties>
-                <Property name="text" type="java.lang.String" value="Open .dat…" />
+                <Property name="text" type="java.lang.String" value="Open" />
               </Properties>
             </Component>
             <Component class="javax.swing.JLabel" name="fileLabel">
@@ -87,7 +87,7 @@
             </Component>
             <Component class="javax.swing.JButton" name="peaksButton">
               <Properties>
-                <Property name="text" type="java.lang.String" value="Analyze peaks…" />
+                <Property name="text" type="java.lang.String" value="Analyze peaks" />
               </Properties>
             </Component>
           </SubComponents>

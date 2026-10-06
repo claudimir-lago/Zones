@@ -9,6 +9,14 @@ import zones.model.ElectropherogramDomain;
 public final class DomainTheme {
     private DomainTheme() {}
 
+    /** Mark an application-owned push button as eligible for domain tinting.
+     *  Internal Look & Feel buttons (spinner arrows, combo arrows, scrollbars)
+     *  are deliberately left unmarked and therefore untouched. */
+    public static <T extends AbstractButton> T themeButton(T button){
+        button.putClientProperty("zones.themeButton",Boolean.TRUE);
+        return button;
+    }
+
     public static Color background(ElectropherogramDomain domain){return switch(domain){
         case TIME -> new Color(244,246,250);
         case CHARGE -> new Color(255,247,237);
@@ -52,7 +60,7 @@ public final class DomainTheme {
             b.setBackground(b.isSelected()?accent:bg);
             b.setForeground(b.isSelected()?Color.WHITE:UIManager.getColor("Label.foreground"));
             b.setOpaque(true);
-        } else if(c instanceof JButton b){
+        } else if(c instanceof JButton b && Boolean.TRUE.equals(b.getClientProperty("zones.themeButton"))){
             Color buttonBg=blend(bg,accent,0.22);
             b.setBackground(buttonBg);
             b.setForeground(UIManager.getColor("Button.foreground"));

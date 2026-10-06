@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
+import java.util.prefs.Preferences;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import zones.chart.ElectropherogramChart;
@@ -12,10 +13,12 @@ import zones.io.AutoDetectDatReader;
 import zones.model.*;
 import zones.processing.*;
 import zones.application.*;
+import zones.core.ZonesEngine;
 
 /** NetBeans-editable shell. Event handlers delegate scientific work to the engine. */
 public class MainFrame extends JFrame {
     private final ElectropherogramChart chart=new ElectropherogramChart();
+    private final ZonesEngine engine=new ZonesEngine();
     private ElectropherogramData data;
     private BaselineResult result;
     private AnalysisResult analysisResult;
@@ -30,15 +33,20 @@ public class MainFrame extends JFrame {
     private final JToggleButton timeDomainButton=new JToggleButton("Time");
     private final JToggleButton chargeDomainButton=new JToggleButton("Charge");
     private final JToggleButton mobilityDomainButton=new JToggleButton("Mobility");
-    private final JButton mobilityCalibrationButton=new JButton("Mobility calibration…");
+    private final JButton mobilityCalibrationButton=new JButton("Mobility calibration");
     private final JCheckBox invertChargeCheck=new JCheckBox("Invert charge axis");
-    private final JButton aboutButton=new JButton("About…");
+    private final JButton aboutButton=new JButton("About");
     private MobilityReference mobilityRef1,mobilityRef2;
     private DetectorChannel mobilityReferenceDetector;
+    private static final Preferences MOBILITY_PREFS=Preferences.userNodeForPackage(MainFrame.class).node("mobilityCalibration");
     private String mobilityMode="Two effective-mobility standards";
-    private double capillaryIdUm=75.0,bgeConductivitySPerM=1.0,leftDistanceCm=13.0,rightDistanceCm=24.0;
+    private String mobilityInstrumentBasis="Charge / conductivity";
+    private double capillaryIdUm=75.0,bgeConductivitySPerM=1.0,bgeConductivityTemperatureC=25.0,leftDistanceCm=13.0,rightDistanceCm=24.0;
+    private double appliedVoltageKv=20.0,totalCapillaryLengthCm=50.0,runTemperatureC=25.0;
     public MainFrame() {
+        loadMobilityPreferences();
         initComponents();
+        markThemeButtons();
         diagnosticsScroll.setVisible(false);
         installDomainControls();
         viewPanel.add(aboutButton);
@@ -46,7 +54,12 @@ public class MainFrame extends JFrame {
         chartHostPanel.add(chart,BorderLayout.CENTER);
         chart.onCursor(cursorLabel::setText);
         chart.onAnalysisRangeChanged(()->invalidateCalculatedState("Analysis range changed — recalculate the baseline before peak analysis."));
+        chart.onCorrectedClick(this::selectPeakFromChart);
         detectorCombo.setModel(new DefaultComboBoxModel<>(DetectorChannel.values()));
+        detectorCombo.setPrototypeDisplayValue(DetectorChannel.RIGHT);
+        detectorCombo.setPreferredSize(new java.awt.Dimension(135,28));
+        detectorCombo.setMinimumSize(new java.awt.Dimension(135,28));
+        disableTooltips(detectorCombo);
         detectorCombo.setSelectedIndex(-1);
         openButton.addActionListener(e->chooseFile());
         processButton.addActionListener(e->process());
@@ -63,18 +76,30 @@ public class MainFrame extends JFrame {
         applyDomain(ElectropherogramDomain.TIME,false);
         setLocationRelativeTo(null);
     }
+    private void markThemeButtons(){
+        for(AbstractButton b:new AbstractButton[]{openButton,processButton,peaksButton,resetZoomButton,mobilityCalibrationButton,aboutButton})
+            DomainTheme.themeButton(b);
+    }
+    private static void disableTooltips(java.awt.Component component){
+        if(component instanceof JComponent jc){jc.setToolTipText(null);ToolTipManager.sharedInstance().unregisterComponent(jc);}
+        if(component instanceof java.awt.Container container)
+            for(java.awt.Component child:container.getComponents())disableTooltips(child);
+    }
     private void showAbout(){
         JTextArea info=new JTextArea(
-            "Zones 0.5.2\n"+
+            "Zones 0.7.4\n"+
             "Capillary electrophoresis data processing in the time, charge, and mobility domains.\n\n"+
             "License: GPL-3.0-or-later\n\n"+
             "Scientific basis:\n"+
             "E. T. da Costa, D. R. Oliveira, C. L. do Lago, Electrophoresis 43 (2022) 2363–2376.\n"+
-            "DOI: 10.1002/elps.202200195");
+            "DOI: 10.1002/elps.202200195\n\n"+
+            "Thermal normalization:\n"+
+            "K. J. M. Francisco, C. L. do Lago, Talanta 185 (2018) 37–41.\n"+
+            "Water viscosity: Huber et al., J. Phys. Chem. Ref. Data 38 (2009) 101–125.");
         info.setEditable(false);info.setOpaque(false);info.setLineWrap(true);info.setWrapStyleWord(true);info.setColumns(58);
-        JButton github=new JButton("GitHub");
-        JButton manual=new JButton("User manual");
-        JButton paper=new JButton("Scientific paper");
+        JButton github=DomainTheme.themeButton(new JButton("GitHub"));
+        JButton manual=DomainTheme.themeButton(new JButton("User manual"));
+        JButton paper=DomainTheme.themeButton(new JButton("Scientific paper"));
         github.addActionListener(e->openExternalLink("https://github.com/claudimir-lago/Zones"));
         manual.addActionListener(e->openUserGuide());
         paper.addActionListener(e->openExternalLink("https://doi.org/10.1002/elps.202200195"));
@@ -113,15 +138,16 @@ public class MainFrame extends JFrame {
         mobilityCalibrationButton.addActionListener(e->{if(editMobilityCalibration()&&activeDomain==ElectropherogramDomain.MOBILITY)applyDomain(activeDomain,true);});
     }
     private boolean hasChargeSource(){return data!=null&&(data.currentMicroamps().isPresent()||data.chargeMilliCoulombs().isPresent());}
-    private void updateDomainAvailability(){boolean available=hasChargeSource();chargeDomainButton.setEnabled(available);mobilityDomainButton.setEnabled(available);mobilityCalibrationButton.setEnabled(available);invertChargeCheck.setEnabled(available);if(!available&&activeDomain!=ElectropherogramDomain.TIME)applyDomain(ElectropherogramDomain.TIME,false);}
+    private boolean hasMobilitySource(){return data!=null;}
+    private void updateDomainAvailability(){boolean charge=hasChargeSource(),mobility=hasMobilitySource();chargeDomainButton.setEnabled(charge);mobilityDomainButton.setEnabled(mobility);mobilityCalibrationButton.setEnabled(mobility);invertChargeCheck.setEnabled(charge);if(!charge&&activeDomain==ElectropherogramDomain.CHARGE)applyDomain(ElectropherogramDomain.TIME,false);}
     private void selectDomainButton(ElectropherogramDomain domain){timeDomainButton.setSelected(domain==ElectropherogramDomain.TIME);chargeDomainButton.setSelected(domain==ElectropherogramDomain.CHARGE);mobilityDomainButton.setSelected(domain==ElectropherogramDomain.MOBILITY);}
     private void applyDomain(ElectropherogramDomain domain,boolean announce){
-        if(domain!=ElectropherogramDomain.TIME&&!hasChargeSource())domain=ElectropherogramDomain.TIME;
+        if(domain==ElectropherogramDomain.CHARGE&&!hasChargeSource())domain=ElectropherogramDomain.TIME;
         if(domain==ElectropherogramDomain.MOBILITY&&mobilityCalibration==null)domain=ElectropherogramDomain.TIME;
         activeDomain=domain;selectDomainButton(domain);chart.setDomain(domain,mobilityCalibration,invertChargeCheck.isSelected());rerenderChart();DomainTheme.apply(this,domain);if(peaksDialog!=null)DomainTheme.apply(peaksDialog,domain);if(peaksPanel!=null)peaksPanel.setDomain(domain,mobilityCalibration,invertChargeCheck.isSelected());
         if(announce){
-            String message=domain==ElectropherogramDomain.TIME?"Time domain — baseline and peak detection use the acquisition timescale.":domain==ElectropherogramDomain.CHARGE?(invertChargeCheck.isSelected()?"Charge domain — x axis is -Charge (mC).":"Charge domain — x axis is signed Charge (mC)."):(mobilityCalibration==null?"Mobility domain — calibration required.":mobilityCalibration.mobilityName()+" spectrum — signed mobility in Ti; |mobility| > 1000 Ti excluded.");
-            if(domain!=ElectropherogramDomain.TIME&&data!=null){var tr=new DomainTransform(data,mobilityCalibration,invertChargeCheck.isSelected());if(tr.hasCurrentPolarityReversal(data)||!tr.signedChargeMonotonic())message+=" WARNING: current polarity reversal/non-monotonic charge detected; transformed coordinates may be ambiguous.";}
+            String message=domain==ElectropherogramDomain.TIME?"Time domain — baseline and peak detection use the acquisition timescale.":domain==ElectropherogramDomain.CHARGE?(invertChargeCheck.isSelected()?"Charge domain — x axis is -Charge (mC).":"Charge domain — x axis is signed Charge (mC)."):(mobilityCalibration==null?"Mobility domain — calibration required.":mobilityCalibration.mobilityName()+" spectrum at 25 °C — signed mobility in Ti; |mobility| > 1000 Ti excluded.");
+            if(domain!=ElectropherogramDomain.TIME&&data!=null&&hasChargeSource()&&(domain==ElectropherogramDomain.CHARGE||(mobilityCalibration!=null&&mobilityCalibration.usesCharge()))){var tr=new DomainTransform(data,mobilityCalibration,invertChargeCheck.isSelected());if(tr.hasCurrentPolarityReversal(data)||!tr.signedChargeMonotonic())message+=" WARNING: current polarity reversal/non-monotonic charge detected; transformed coordinates may be ambiguous.";}
             statusLabel.setText(message);
         }
     }
@@ -130,36 +156,120 @@ public class MainFrame extends JFrame {
     }
     private boolean editMobilityCalibration(){
         JComboBox<String> mode=new JComboBox<>(new String[]{"Instrument parameters only","Two effective-mobility standards","Instrument parameters + one effective-mobility reference"});mode.setSelectedItem(mobilityMode);
-        JTextField id=new JTextField(Double.toString(capillaryIdUm),10),cond=new JTextField(Double.toString(bgeConductivitySPerM),10),left=new JTextField(Double.toString(leftDistanceCm),10),right=new JTextField(Double.toString(rightDistanceCm),10);
-        JPanel panel=new JPanel(new java.awt.GridLayout(0,2,6,6));panel.add(new JLabel("Calibration mode:"));panel.add(mode);panel.add(new JLabel("Capillary i.d. (um):"));panel.add(id);panel.add(new JLabel("BGE conductivity (S/m):"));panel.add(cond);panel.add(new JLabel("Injection → 1st C4D (cm):"));panel.add(left);panel.add(new JLabel("Injection → 2nd C4D (cm):"));panel.add(right);
-        String refs=referenceSummary();panel.add(new JLabel("Peak references:"));panel.add(new JLabel(refs));
+        JComboBox<String> basis=new JComboBox<>(new String[]{"Charge / conductivity","Voltage / capillary length"});
+        if(!hasChargeSource()&&"Charge / conductivity".equals(mobilityInstrumentBasis))mobilityInstrumentBasis="Voltage / capillary length";
+        basis.setSelectedItem(mobilityInstrumentBasis);
+        JTextField id=new JTextField(Double.toString(capillaryIdUm),7),cond=new JTextField(Double.toString(bgeConductivitySPerM),7),condTemp=new JTextField(Double.toString(bgeConductivityTemperatureC),7);
+        JTextField voltage=new JTextField(Double.toString(appliedVoltageKv),7),totalLength=new JTextField(Double.toString(totalCapillaryLengthCm),7),runTemp=new JTextField(Double.toString(runTemperatureC),7);
+        JTextField first=new JTextField(Double.toString(leftDistanceCm),7),second=new JTextField(Double.toString(rightDistanceCm),7);
+        JLabel basisLabel=new JLabel("Instrumental basis:");
+        JLabel idLabel=new JLabel("Capillary i.d. (um):"),condLabel=new JLabel("BGE conductivity (S/m):"),condTempLabel=new JLabel("Conductivity temperature (°C):");
+        JLabel voltageLabel=new JLabel("Applied voltage (kV, signed):"),lengthLabel=new JLabel("Total capillary length (cm):"),runTempLabel=new JLabel("Run temperature (°C):");
+        JLabel firstLabel=new JLabel("Injection → 1st C4D (cm):"),secondLabel=new JLabel("Injection → 2nd C4D (cm):");
+        JPanel panel=new JPanel(new java.awt.GridBagLayout());
+        java.awt.GridBagConstraints gc=new java.awt.GridBagConstraints();gc.insets=new java.awt.Insets(2,4,2,4);gc.anchor=java.awt.GridBagConstraints.WEST;gc.fill=java.awt.GridBagConstraints.HORIZONTAL;
+        int[] rowHolder={0};
+        java.util.function.BiConsumer<JComponent,JComponent> addRow=(a,b)->{gc.gridx=0;gc.gridy=rowHolder[0];gc.weightx=0;panel.add(a,gc);gc.gridx=1;gc.weightx=1;panel.add(b,gc);rowHolder[0]++;};
+        addRow.accept(new JLabel("Calibration mode:"),mode);addRow.accept(basisLabel,basis);
+        addRow.accept(idLabel,id);addRow.accept(condLabel,cond);addRow.accept(condTempLabel,condTemp);
+        addRow.accept(voltageLabel,voltage);addRow.accept(lengthLabel,totalLength);addRow.accept(runTempLabel,runTemp);
+        addRow.accept(firstLabel,first);addRow.accept(secondLabel,second);addRow.accept(new JLabel("Peak references:"),new JLabel(referenceSummary()));
+        Runnable update=()->{
+            boolean instrumental=!"Two effective-mobility standards".equals(mode.getSelectedItem());
+            basis.setEnabled(instrumental);basisLabel.setEnabled(instrumental);
+            boolean charge=instrumental&&"Charge / conductivity".equals(basis.getSelectedItem())&&hasChargeSource();
+            boolean volts=instrumental&&"Voltage / capillary length".equals(basis.getSelectedItem());
+            for(JComponent c:new JComponent[]{id,cond,condTemp,idLabel,condLabel,condTempLabel})c.setEnabled(charge);
+            for(JComponent c:new JComponent[]{voltage,totalLength,runTemp,voltageLabel,lengthLabel,runTempLabel})c.setEnabled(volts);
+            for(JComponent c:new JComponent[]{first,second,firstLabel,secondLabel})c.setEnabled(instrumental);
+            if(instrumental&&!hasChargeSource()&&"Charge / conductivity".equals(basis.getSelectedItem())){basis.setSelectedItem("Voltage / capillary length");}
+        };
+        mode.addActionListener(e->update.run());basis.addActionListener(e->update.run());update.run();
         int answer=JOptionPane.showConfirmDialog(this,panel,"Mobility calibration",JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE);if(answer!=JOptionPane.OK_OPTION)return false;
-        try{String oldMode=mobilityMode;mobilityMode=(String)mode.getSelectedItem();capillaryIdUm=Double.parseDouble(id.getText().trim());bgeConductivitySPerM=Double.parseDouble(cond.getText().trim());leftDistanceCm=Double.parseDouble(left.getText().trim());rightDistanceCm=Double.parseDouble(right.getText().trim());if(!Objects.equals(oldMode,mobilityMode)){if("Instrument parameters only".equals(mobilityMode)){mobilityRef1=null;mobilityRef2=null;}else if("Instrument parameters + one effective-mobility reference".equals(mobilityMode))mobilityRef2=null;}rebuildMobilityCalibration(false);if(peaksPanel!=null)peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);if(mobilityCalibration==null)JOptionPane.showMessageDialog(this,"Calibration mode saved. Assign the required reference peak(s) directly in the Quantitation table of Peak analysis.","Mobility calibration",JOptionPane.INFORMATION_MESSAGE);return true;}catch(Exception ex){JOptionPane.showMessageDialog(this,ex.getMessage(),"Invalid mobility calibration",JOptionPane.ERROR_MESSAGE);return false;}
+        try{
+            mobilityMode=(String)mode.getSelectedItem();mobilityInstrumentBasis=(String)basis.getSelectedItem();
+            capillaryIdUm=Double.parseDouble(id.getText().trim());bgeConductivitySPerM=Double.parseDouble(cond.getText().trim());bgeConductivityTemperatureC=Double.parseDouble(condTemp.getText().trim());
+            appliedVoltageKv=Double.parseDouble(voltage.getText().trim());totalCapillaryLengthCm=Double.parseDouble(totalLength.getText().trim());runTemperatureC=Double.parseDouble(runTemp.getText().trim());
+            leftDistanceCm=Double.parseDouble(first.getText().trim());rightDistanceCm=Double.parseDouble(second.getText().trim());
+            saveMobilityPreferences();rebuildMobilityCalibration(false);
+            if(peaksPanel!=null){peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);peaksPanel.setExportMetadata(mobilityExportMetadata());}
+            if(mobilityCalibration==null&&!"Instrument parameters only".equals(mobilityMode))JOptionPane.showMessageDialog(this,"Calibration mode saved. Assign the required reference peak(s) directly in the Quantitation table of Peak analysis.","Mobility calibration",JOptionPane.INFORMATION_MESSAGE);
+            return true;
+        }catch(Exception ex){JOptionPane.showMessageDialog(this,ex.getMessage(),"Invalid mobility calibration",JOptionPane.ERROR_MESSAGE);return false;}
     }
     private double currentDetectorDistance(){return (selectedDetector()==DetectorChannel.LEFT?leftDistanceCm:rightDistanceCm)/100.0;}
-    private String referenceSummary(){return (mobilityRef1==null?"none":String.format(Locale.ROOT,"Ref1 q=%.5g mC, mu=%.5g Ti",mobilityRef1.migrationChargeMilliCoulombs(),mobilityRef1.effectiveMobilityTi()))+(mobilityRef2==null?"":"; Ref2 q="+String.format(Locale.ROOT,"%.5g mC, mu=%.5g Ti",mobilityRef2.migrationChargeMilliCoulombs(),mobilityRef2.effectiveMobilityTi()));}
+    private String referenceSummary(){
+        return referenceText("Ref1",mobilityRef1)+(mobilityRef2==null?"":"; "+referenceText("Ref2",mobilityRef2));
+    }
+    private String referenceText(String name,MobilityReference ref){
+        if(ref==null)return "none";String q=Double.isFinite(ref.migrationChargeMilliCoulombs())?String.format(Locale.ROOT,", q=%.5g mC",ref.migrationChargeMilliCoulombs()):"";
+        return String.format(Locale.ROOT,"%s t=%.6g min%s, mu=%.5g Ti at %.1f °C",name,ref.migrationTimeMinutes(),q,ref.effectiveMobilityTi(),ref.sourceTemperatureC());
+    }
     private void editMobilityReference(String role,MobilityReference ref){
-        if(ref==null)return;mobilityReferenceDetector=selectedDetector();double q=ref.migrationChargeMilliCoulombs();
+        if(ref==null)return;mobilityReferenceDetector=selectedDetector();
         if("—".equals(role)){
-            if(sameReferenceCharge(mobilityRef1,q))mobilityRef1=null;
-            if(sameReferenceCharge(mobilityRef2,q))mobilityRef2=null;
+            if(sameReference(mobilityRef1,ref))mobilityRef1=null;
+            if(sameReference(mobilityRef2,ref))mobilityRef2=null;
         }else if("Two effective-mobility standards".equals(mobilityMode)){
-            // A peak can occupy only one reference slot. Remove any previous role for this same peak first.
-            if(sameReferenceCharge(mobilityRef1,q))mobilityRef1=null;
-            if(sameReferenceCharge(mobilityRef2,q))mobilityRef2=null;
+            if(sameReference(mobilityRef1,ref))mobilityRef1=null;if(sameReference(mobilityRef2,ref))mobilityRef2=null;
             if("Ref 1".equals(role))mobilityRef1=ref;else if("Ref 2".equals(role))mobilityRef2=ref;else return;
         }else if("Instrument parameters + one effective-mobility reference".equals(mobilityMode)){
             if(!"Reference".equals(role))return;mobilityRef1=ref;mobilityRef2=null;
         }else return;
-        try{rebuildMobilityCalibration(false);statusLabel.setText("Mobility reference updated — "+referenceSummary());if(peaksPanel!=null)peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);if(activeDomain==ElectropherogramDomain.MOBILITY&&mobilityCalibration!=null)applyDomain(activeDomain,false);}catch(Exception ex){statusLabel.setText("Mobility references updated; calibration incomplete: "+ex.getMessage());if(peaksPanel!=null)peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);}
+        try{rebuildMobilityCalibration(false);statusLabel.setText("Mobility reference updated — "+referenceSummary());if(peaksPanel!=null){peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);peaksPanel.setExportMetadata(mobilityExportMetadata());}if(activeDomain==ElectropherogramDomain.MOBILITY&&mobilityCalibration!=null)applyDomain(activeDomain,false);}catch(Exception ex){statusLabel.setText("Mobility references updated; calibration incomplete: "+ex.getMessage());if(peaksPanel!=null){peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);peaksPanel.setExportMetadata(mobilityExportMetadata());}}
     }
-    private boolean sameReferenceCharge(MobilityReference ref,double q){if(ref==null||!Double.isFinite(q))return false;double tol=Math.max(1e-9,Math.abs(q)*1e-8);return Math.abs(ref.migrationChargeMilliCoulombs()-q)<=tol;}
+    private boolean sameReference(MobilityReference a,MobilityReference b){if(a==null||b==null)return false;double ta=a.migrationTimeMinutes(),tb=b.migrationTimeMinutes();if(Double.isFinite(ta)&&Double.isFinite(tb)){double tol=Math.max(1e-9,Math.abs(tb)*1e-8);return Math.abs(ta-tb)<=tol;}double qa=a.migrationChargeMilliCoulombs(),qb=b.migrationChargeMilliCoulombs();if(!Double.isFinite(qa)||!Double.isFinite(qb))return false;double tol=Math.max(1e-9,Math.abs(qb)*1e-8);return Math.abs(qa-qb)<=tol;}
     private void rebuildMobilityCalibration(boolean complain){
-        double ld=currentDetectorDistance();
-        if("Instrument parameters only".equals(mobilityMode))mobilityCalibration=MobilityCalibration.fromInstrument(capillaryIdUm,bgeConductivitySPerM,ld);
-        else if("Two effective-mobility standards".equals(mobilityMode)){if(mobilityRef1==null||mobilityRef2==null){mobilityCalibration=null;if(complain)throw new IllegalArgumentException("Select two peaks in Peak analysis and use them as mobility references.");return;}mobilityCalibration=MobilityCalibration.fromTwoStandards(mobilityRef1.migrationChargeMilliCoulombs(),mobilityRef1.effectiveMobilityTi(),mobilityRef2.migrationChargeMilliCoulombs(),mobilityRef2.effectiveMobilityTi());}
-        else {if(mobilityRef1==null){mobilityCalibration=null;if(complain)throw new IllegalArgumentException("Select one peak in Peak analysis and use it as a mobility reference.");return;}mobilityCalibration=MobilityCalibration.fromInstrumentWithReference(capillaryIdUm,bgeConductivitySPerM,ld,mobilityRef1.migrationChargeMilliCoulombs(),mobilityRef1.effectiveMobilityTi());}
-        statusLabel.setText(String.format(Locale.ROOT,"%s calibration: k = %.8g Ti·mC%s",mobilityCalibration.mobilityName(),mobilityCalibration.kTiMilliCoulombs(),mobilityCalibration.isEffective()?String.format(Locale.ROOT," | EOF = %.8g Ti",mobilityCalibration.eofMobilityTi()):""));
+        double ld=currentDetectorDistance();boolean chargeBasis="Charge / conductivity".equals(mobilityInstrumentBasis);
+        if("Instrument parameters only".equals(mobilityMode)){
+            if(chargeBasis){if(!hasChargeSource())throw new IllegalArgumentException("Charge/current data are not available; use Voltage / capillary length.");mobilityCalibration=MobilityCalibration.fromInstrumentAtTemperature(capillaryIdUm,bgeConductivitySPerM,bgeConductivityTemperatureC,ld);}
+            else mobilityCalibration=MobilityCalibration.fromVoltage(appliedVoltageKv,totalCapillaryLengthCm/100.0,ld,runTemperatureC);
+        }else if("Two effective-mobility standards".equals(mobilityMode)){
+            if(mobilityRef1==null||mobilityRef2==null){mobilityCalibration=null;if(complain)throw new IllegalArgumentException("Select two peaks in Peak analysis and use them as mobility references.");return;}
+            if(hasChargeSource()&&Double.isFinite(mobilityRef1.migrationChargeMilliCoulombs())&&mobilityRef1.migrationChargeMilliCoulombs()!=0&&Double.isFinite(mobilityRef2.migrationChargeMilliCoulombs())&&mobilityRef2.migrationChargeMilliCoulombs()!=0)mobilityCalibration=MobilityCalibration.fromTwoStandardsAtTemperatures(mobilityRef1.migrationChargeMilliCoulombs(),mobilityRef1.effectiveMobilityTi(),mobilityRef1.sourceTemperatureC(),mobilityRef2.migrationChargeMilliCoulombs(),mobilityRef2.effectiveMobilityTi(),mobilityRef2.sourceTemperatureC());
+            else mobilityCalibration=MobilityCalibration.fromTwoStandardsByTimeAtTemperatures(mobilityRef1.migrationTimeMinutes(),mobilityRef1.effectiveMobilityTi(),mobilityRef1.sourceTemperatureC(),mobilityRef2.migrationTimeMinutes(),mobilityRef2.effectiveMobilityTi(),mobilityRef2.sourceTemperatureC());
+        }else{
+            if(mobilityRef1==null){mobilityCalibration=null;if(complain)throw new IllegalArgumentException("Select one peak in Peak analysis and use it as a mobility reference.");return;}
+            if(chargeBasis){if(!hasChargeSource())throw new IllegalArgumentException("Charge/current data are not available; use Voltage / capillary length.");mobilityCalibration=MobilityCalibration.fromInstrumentWithReferenceAtTemperatures(capillaryIdUm,bgeConductivitySPerM,bgeConductivityTemperatureC,ld,mobilityRef1.migrationChargeMilliCoulombs(),mobilityRef1.effectiveMobilityTi(),mobilityRef1.sourceTemperatureC());}
+            else mobilityCalibration=MobilityCalibration.fromVoltageWithReferenceAtTemperatures(appliedVoltageKv,totalCapillaryLengthCm/100.0,ld,runTemperatureC,mobilityRef1.migrationTimeMinutes(),mobilityRef1.effectiveMobilityTi(),mobilityRef1.sourceTemperatureC());
+        }
+        String kText=mobilityCalibration.usesCharge()?String.format(Locale.ROOT,"k = %.8g Ti·mC",mobilityCalibration.kTiMilliCoulombs()):String.format(Locale.ROOT,"k = %.8g Ti·min",mobilityCalibration.kTiMinutes());
+        statusLabel.setText(String.format(Locale.ROOT,"%s at 25 °C calibration (%s): %s%s",mobilityCalibration.mobilityName(),mobilityCalibration.basisName(),kText,mobilityCalibration.isEffective()?String.format(Locale.ROOT," | EOF = %.8g Ti",mobilityCalibration.eofMobilityTi()):""));
+    }
+    private java.util.Map<String,String> mobilityExportMetadata(){
+        java.util.LinkedHashMap<String,String> m=new java.util.LinkedHashMap<>();
+        m.put("mobility.mode",mobilityMode);m.put("mobility.instrumental.basis",mobilityInstrumentBasis);m.put("mobility.reference.temperature.C","25.0");
+        m.put("capillary.id.um",Double.toString(capillaryIdUm));m.put("bge.conductivity.S_per_m",Double.toString(bgeConductivitySPerM));m.put("bge.conductivity.temperature.C",Double.toString(bgeConductivityTemperatureC));
+        m.put("applied.voltage.kV",Double.toString(appliedVoltageKv));m.put("capillary.total.length.cm",Double.toString(totalCapillaryLengthCm));m.put("run.temperature.C",Double.toString(runTemperatureC));
+        m.put("distance.injection_to_1st_C4D.cm",Double.toString(leftDistanceCm));m.put("distance.injection_to_2nd_C4D.cm",Double.toString(rightDistanceCm));
+        if(mobilityCalibration!=null)m.put("mobility.calibration.basis",mobilityCalibration.basisName());
+        if(mobilityRef1!=null){m.put("mobility.ref1.label",mobilityRef1.label());m.put("mobility.ref1.time.min",Double.toString(mobilityRef1.migrationTimeMinutes()));m.put("mobility.ref1.charge.mC",Double.toString(mobilityRef1.migrationChargeMilliCoulombs()));m.put("mobility.ref1.mu_eff.Ti",Double.toString(mobilityRef1.effectiveMobilityTi()));m.put("mobility.ref1.temperature.C",Double.toString(mobilityRef1.sourceTemperatureC()));}
+        if(mobilityRef2!=null){m.put("mobility.ref2.label",mobilityRef2.label());m.put("mobility.ref2.time.min",Double.toString(mobilityRef2.migrationTimeMinutes()));m.put("mobility.ref2.charge.mC",Double.toString(mobilityRef2.migrationChargeMilliCoulombs()));m.put("mobility.ref2.mu_eff.Ti",Double.toString(mobilityRef2.effectiveMobilityTi()));m.put("mobility.ref2.temperature.C",Double.toString(mobilityRef2.sourceTemperatureC()));}
+        return m;
+    }
+    private static boolean mobilityPreferencesEnabled(){return !Boolean.getBoolean("zones.disablePreferences");}
+    private void loadMobilityPreferences(){
+        if(!mobilityPreferencesEnabled())return;
+        mobilityMode=MOBILITY_PREFS.get("mode",mobilityMode);mobilityInstrumentBasis=MOBILITY_PREFS.get("basis",mobilityInstrumentBasis);
+        capillaryIdUm=MOBILITY_PREFS.getDouble("capillaryIdUm",capillaryIdUm);bgeConductivitySPerM=MOBILITY_PREFS.getDouble("conductivity",bgeConductivitySPerM);bgeConductivityTemperatureC=MOBILITY_PREFS.getDouble("conductivityTempC",bgeConductivityTemperatureC);
+        appliedVoltageKv=MOBILITY_PREFS.getDouble("voltageKv",appliedVoltageKv);totalCapillaryLengthCm=MOBILITY_PREFS.getDouble("totalLengthCm",totalCapillaryLengthCm);runTemperatureC=MOBILITY_PREFS.getDouble("runTempC",runTemperatureC);
+        leftDistanceCm=MOBILITY_PREFS.getDouble("firstDistanceCm",leftDistanceCm);rightDistanceCm=MOBILITY_PREFS.getDouble("secondDistanceCm",rightDistanceCm);
+    }
+    private void saveMobilityPreferences(){
+        if(!mobilityPreferencesEnabled())return;
+        MOBILITY_PREFS.put("mode",mobilityMode);MOBILITY_PREFS.put("basis",mobilityInstrumentBasis);
+        MOBILITY_PREFS.putDouble("capillaryIdUm",capillaryIdUm);MOBILITY_PREFS.putDouble("conductivity",bgeConductivitySPerM);MOBILITY_PREFS.putDouble("conductivityTempC",bgeConductivityTemperatureC);
+        MOBILITY_PREFS.putDouble("voltageKv",appliedVoltageKv);MOBILITY_PREFS.putDouble("totalLengthCm",totalCapillaryLengthCm);MOBILITY_PREFS.putDouble("runTempC",runTemperatureC);
+        MOBILITY_PREFS.putDouble("firstDistanceCm",leftDistanceCm);MOBILITY_PREFS.putDouble("secondDistanceCm",rightDistanceCm);
+    }
+    private void selectPeakFromChart(double x){
+        if(peaksPanel==null||peaksPanel.result()==null){
+            if(result!=null)JOptionPane.showMessageDialog(this,"Open Peak analysis first so the fitted components can be matched to the graph.","Peak selection",JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        if(!peaksPanel.selectQuantitationByX(x)){
+            JOptionPane.showMessageDialog(this,"No fitted component was found at the selected position.","Peak selection",JOptionPane.WARNING_MESSAGE);
+        }else if(peaksDialog!=null&&!peaksDialog.isVisible())peaksDialog.setVisible(true);
     }
     private void chooseFile() {
         JFileChooser chooser=new JFileChooser(data==null?new java.io.File("."):data.source().getParent().toFile());
@@ -192,7 +302,7 @@ public class MainFrame extends JFrame {
             mobilityRef1=null;mobilityRef2=null;mobilityReferenceDetector=null;
             if(!"Instrument parameters only".equals(mobilityMode))mobilityCalibration=null;
         }
-        if("Instrument parameters only".equals(mobilityMode) && mobilityCalibration!=null){try{rebuildMobilityCalibration(false);}catch(Exception ignored){mobilityCalibration=null;}}
+        if("Instrument parameters only".equals(mobilityMode)){try{rebuildMobilityCalibration(false);}catch(Exception ignored){mobilityCalibration=null;}}
         clearPeaks();result=null;analysisResult=null;chartHostPanel.removeAll();chartHostPanel.add(chart,BorderLayout.CENTER);chartHostPanel.revalidate();chartHostPanel.repaint();
         chart.showSignal(data,selectedDetector());updateOverlays();
         boolean constant=data.isConstant(selectedDetector());
@@ -209,7 +319,7 @@ public class MainFrame extends JFrame {
         clearPeaks();result=null;analysisResult=null;long generation=++processingGeneration;
         setBusy(true);statusLabel.setText("Processing selective MMR + baseline…");
         new SwingWorker<AnalysisResult,Void>() {
-            @Override protected AnalysisResult doInBackground(){return new AnalysisProcessor().process(input,detector,parameters);}
+            @Override protected AnalysisResult doInBackground(){return engine.analyze(input,detector,parameters);}
             @Override protected void done(){
                 try{AnalysisResult r=get();if(generation==processingGeneration)displayAnalysis(r);}catch(InterruptedException e){Thread.currentThread().interrupt();showError(e);}catch(ExecutionException e){showError(e.getCause());}finally{setBusy(false);}
             }
@@ -268,7 +378,7 @@ public class MainFrame extends JFrame {
     private void openPeaks(){
         if(result==null)return;
         if(peaksDialog==null){
-            peaksPanel=new PeakAnalysisPanel();peaksPanel.setInput(result,analysisResult);peaksPanel.setDomain(activeDomain,mobilityCalibration,invertChargeCheck.isSelected());peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);peaksPanel.onMobilityReferenceEdit(this::editMobilityReference);
+            peaksPanel=new PeakAnalysisPanel();peaksPanel.setInput(result,analysisResult);peaksPanel.setDomain(activeDomain,mobilityCalibration,invertChargeCheck.isSelected());peaksPanel.setMobilityReferences(mobilityRef1,mobilityRef2,mobilityMode);peaksPanel.setExportMetadata(mobilityExportMetadata());peaksPanel.onMobilityReferenceEdit(this::editMobilityReference);
             PeakAnalysisPanel owner=peaksPanel;
             peaksPanel.onSelection(fit->{if(peaksPanel==owner){highlightedFit=fit;updatePeakOverlay();}});peaksPanel.onOverlayChanged(this::updatePeakOverlay);
             peaksPanel.onZoomToWindow(fit->{if(peaksPanel==owner&&fit!=null)chart.zoomToWindow(fit.window(),0.1);});
@@ -316,7 +426,7 @@ public class MainFrame extends JFrame {
         topPanel.setLayout(new java.awt.BorderLayout(4, 4));
         filePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Electropherogram"));
         filePanel.setLayout(new java.awt.FlowLayout(0, 8, 6));
-        openButton.setText("Open .dat…");
+        openButton.setText("Open");
         filePanel.add(openButton);
         fileLabel.setText("No file open");
         filePanel.add(fileLabel);
@@ -325,7 +435,7 @@ public class MainFrame extends JFrame {
         filePanel.add(detectorCombo);
         processButton.setText("Calculate baseline");
         filePanel.add(processButton);
-        peaksButton.setText("Analyze peaks…");
+        peaksButton.setText("Analyze peaks");
         filePanel.add(peaksButton);
         topPanel.add(filePanel, java.awt.BorderLayout.NORTH);
         domainPanel.setLayout(new java.awt.FlowLayout(0, 8, 3));

@@ -8,7 +8,7 @@ public record PhysicalBaselineParameters(double numStd,double minimumLengthSecon
         double logLambda,double localWindowSeconds,double noiseFactor,double slopeFactor,double minimumRunSeconds) {
     public static final double REFERENCE_INTERVAL_SECONDS=0.07620;
     public PhysicalBaselineParameters {
-        if(!Double.isFinite(numStd) || numStd<2 || numStd>3.5)throw new IllegalArgumentException("num_std must be between 2.0 and 3.5.");
+        if(!Double.isFinite(numStd) || numStd<2 || numStd>3.5)throw new IllegalArgumentException("FABC threshold (σ) must be between 2.0 and 3.5.");
         PhysicalUnits.lambda(logLambda);
         for(double duration:new double[]{minimumLengthSeconds,localWindowSeconds,minimumRunSeconds,peakWidthMinimumSeconds,peakWidthMaximumSeconds})
             if(!Double.isFinite(duration) || duration<=0)throw new IllegalArgumentException("Durations must be positive and finite.");

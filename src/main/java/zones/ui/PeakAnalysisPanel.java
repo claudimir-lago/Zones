@@ -9,8 +9,9 @@ import java.util.function.Consumer;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import zones.model.*;
-import zones.application.PeakAnalysisProcessor;
+import zones.core.ZonesEngine;
 import zones.io.PeakAnalysisExporter;
+import zones.io.UserResultsExporter;
 import zones.processing.DomainPeakCalculator;
 import org.jfree.chart.*;
 import org.jfree.chart.axis.LogAxis;
@@ -19,6 +20,7 @@ import org.jfree.data.xy.*;
 
 /** NetBeans-editable peak-analysis view. All processing is delegated to a worker/service. */
 public class PeakAnalysisPanel extends JPanel {
+    private final ZonesEngine engine=new ZonesEngine();
     private BaselineResult baseline;
     private AnalysisResult analysis;
     private PeakAnalysisResult result;
@@ -51,20 +53,32 @@ public class PeakAnalysisPanel extends JPanel {
     private final JCheckBox nCheck=new JCheckBox("Plates (N)",true);
     private final JCheckBox ngauCheck=new JCheckBox("Gaussian plates (NGau)",false);
     private final JCheckBox fitDetailsCheck=new JCheckBox("Fit details",false);
-    private final JButton exportTableButton=new JButton("Export table…");
+    private final JButton exportTableButton=new JButton("Export table");
+    private final JButton developerExportButton=new JButton("Developer ZIP");
+    private Map<String,String> exportMetadata=Map.of();
     private ElectropherogramDomain activeDomain=ElectropherogramDomain.TIME;
     private MobilityCalibration mobilityCalibration;
+    private static void disableTooltips(java.awt.Component component){
+        if(component instanceof JComponent jc){jc.setToolTipText(null);ToolTipManager.sharedInstance().unregisterComponent(jc);}
+        if(component instanceof java.awt.Container container)
+            for(java.awt.Component child:container.getComponents())disableTooltips(child);
+    }
     public PeakAnalysisPanel(){
         initComponents();
+        for(AbstractButton b:new AbstractButton[]{analyzeButton,exportButton,exportTableButton,developerExportButton}) DomainTheme.themeButton(b);
         quantTable.setAutoCreateRowSorter(true);quantTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         quantTable.setToolTipText("Rows highlighted in pale red have a time-domain fit with R² < 0.99 and should be inspected.");
         tabs.insertTab("Quantitation",null,new JScrollPane(quantTable),"Primary analytical results",0);
-        controlsPanel.add(nCheck);controlsPanel.add(ngauCheck);controlsPanel.add(fitDetailsCheck);controlsPanel.add(exportTableButton);
+        controlsPanel.add(nCheck);controlsPanel.add(ngauCheck);controlsPanel.add(fitDetailsCheck);controlsPanel.add(exportTableButton);controlsPanel.add(developerExportButton);
         nCheck.addActionListener(e->{if(result!=null)display(result);});ngauCheck.addActionListener(e->{if(result!=null)display(result);});fitDetailsCheck.addActionListener(e->{if(result!=null)display(result);});
-        exportTableButton.addActionListener(e->exportTable());
+        exportTableButton.addActionListener(e->exportTable());developerExportButton.addActionListener(e->exportDeveloper());
         thresholdSpinner.setModel(new SpinnerNumberModel(10.0,.01,1000000.0,1.0));
         var thresholdEditor=new JSpinner.NumberEditor(thresholdSpinner,"0.######");thresholdEditor.getFormat().setDecimalFormatSymbols(java.text.DecimalFormatSymbols.getInstance(Locale.ROOT));thresholdSpinner.setEditor(thresholdEditor);
-        thresholdSpinner.setToolTipText("LPNR = local prominence / local sigma. Default 10; increasing it selects fewer candidates. It is not analytical SNR or LOD/LOQ.");
+        thresholdSpinner.setPreferredSize(new java.awt.Dimension(132,28));
+        thresholdSpinner.setMinimumSize(new java.awt.Dimension(132,28));
+        if(thresholdSpinner.getEditor() instanceof JSpinner.DefaultEditor editor){editor.getTextField().setColumns(9);editor.getTextField().setHorizontalAlignment(JTextField.RIGHT);}
+        disableTooltips(thresholdSpinner);
+        thresholdLabel.setToolTipText("LPNR = local prominence / local sigma. Default 10; increasing it selects fewer candidates. It is not analytical SNR or LOD/LOQ.");
         analyzeButton.addActionListener(e->analyze());exportButton.addActionListener(e->export());
         thresholdSpinner.addChangeListener(e->{if(result!=null&&!busy)analyze();});
         componentsCheck.addActionListener(e->overlayChanged.run());sumCheck.addActionListener(e->overlayChanged.run());markersCheck.addActionListener(e->overlayChanged.run());
@@ -89,6 +103,7 @@ public class PeakAnalysisPanel extends JPanel {
     }
     public void onMobilityReferenceEdit(MobilityReferenceEditor action){mobilityReferenceEditor=action==null?(role,ref)->{}:action;}
     public void setMobilityReferences(MobilityReference r1,MobilityReference r2,String mode){this.mobilityRef1=r1;this.mobilityRef2=r2;this.mobilityReferenceMode=mode==null?"":mode;if(result!=null)display(result);}
+    public void setExportMetadata(Map<String,String> metadata){this.exportMetadata=metadata==null?Map.of():Map.copyOf(metadata);}
     public void onSelection(Consumer<PeakFit> action){selection=action;}
     public void onOverlayChanged(Runnable action){overlayChanged=action;}
     public void onZoomToWindow(Consumer<PeakFit> action){zoomToWindow=action==null?fit->{}:action;}
@@ -101,7 +116,7 @@ public class PeakAnalysisPanel extends JPanel {
         PeakParameters p=PeakParameters.defaults().withThreshold(((Number)thresholdSpinner.getValue()).doubleValue());
         var snapshot=baseline;long generation=++analysisGeneration;result=null;setBusy(true);statusLabel.setText("Detecting candidates and fitting peak windows…");
         new SwingWorker<PeakAnalysisResult,Void>(){
-            @Override protected PeakAnalysisResult doInBackground(){return new PeakAnalysisProcessor().process(snapshot,p);}
+            @Override protected PeakAnalysisResult doInBackground(){return engine.analyzePeaks(snapshot,p);}
             @Override protected void done(){try{PeakAnalysisResult r=get();if(generation==analysisGeneration&&snapshot==baseline)display(r);}catch(Exception ex){statusLabel.setText("Failure: "+(ex.getCause()==null?ex.getMessage():ex.getCause().getMessage()));}finally{if(generation==analysisGeneration)setBusy(false);}}
         }.execute();
     }
@@ -115,23 +130,23 @@ public class PeakAnalysisPanel extends JPanel {
             for(var c:f.components()){var d=c.candidate();rowFits.add(f);table.addRow(new Object[]{f.window().id(),d.rank(),d.prominenceRank(),d.polarity()>0?"+":"−",state,d.observedApexSeconds()/60,c.a1Seconds()/60,c.fittedApexSeconds()/60,d.localProminence(),d.localNoiseSigma(),d.lpnr(),d.w50Seconds(),c.eta(),c.a2Seconds(),c.a3Seconds(),c.signedArea(),100*c.capturedFraction(),c.effectivePlates(),c.gaussianPlates(),c.fwhmSeconds(),f.r2(),f.rms(),f.window().type()});}
         }
         var metricCalculator=new DomainPeakCalculator(baseline.data(),activeDomain,mobilityCalibration,invertCharge);
-        String positionLabel=activeDomain==ElectropherogramDomain.TIME?"Migration time (min)":activeDomain==ElectropherogramDomain.CHARGE?(invertCharge?"Migration -charge (mC)":"Migration charge (mC)"):(mobilityCalibration!=null?mobilityCalibration.mobilityName()+" (Ti)":"Mobility (Ti)");
+        String positionLabel=activeDomain==ElectropherogramDomain.TIME?"Migration time (min)":activeDomain==ElectropherogramDomain.CHARGE?(invertCharge?"Migration -charge (mC)":"Migration charge (mC)"):(mobilityCalibration!=null?mobilityCalibration.mobilityName()+" at 25 °C (Ti)":"Mobility (Ti)");
         String areaLabel=activeDomain==ElectropherogramDomain.TIME?"Area (a.u.·s)":activeDomain==ElectropherogramDomain.CHARGE?"Area (a.u.·mC)":"Area (a.u.·Ti)";
         String widthLabel=activeDomain==ElectropherogramDomain.TIME?"FWHM (s)":activeDomain==ElectropherogramDomain.CHARGE?"FWHM (mC)":"FWHM (Ti)";
-        java.util.List<String> qc=new ArrayList<>(java.util.List.of(positionLabel,areaLabel,"Mobility reference","Known μeff (Ti)"));
+        java.util.List<String> qc=new ArrayList<>(java.util.List.of(positionLabel,areaLabel,"Mobility reference","Known μeff (Ti)","μeff temp (°C)"));
         if(nCheck.isSelected())qc.add("Plates (N, time fit)");if(ngauCheck.isSelected())qc.add("Gaussian plates (NGau, time fit)");
         if(fitDetailsCheck.isSelected()){qc.add(widthLabel);qc.add("R² (time fit)");}
         var qm=quantitationModel(qc.toArray(String[]::new));
         for(var f:value.fits())for(var c:f.components()){
             quantComponents.add(c);quantR2.add(f.r2());quantPositionDecimals.add(localAxisDecimals(c,false));quantWidthDecimals.add(localAxisDecimals(c,true));
             var metrics=metricCalculator.metrics(c);java.util.List<Object> row=new ArrayList<>();
-            row.add(activeDomain==ElectropherogramDomain.TIME?metrics.position()/60.0:metrics.position());row.add(metrics.signedArea());row.add(referenceRole(c));row.add(referenceKnownMobility(c));
+            row.add(activeDomain==ElectropherogramDomain.TIME?metrics.position()/60.0:metrics.position());row.add(metrics.signedArea());row.add(referenceRole(c));row.add(referenceKnownMobility(c));row.add(referenceTemperature(c));
             if(nCheck.isSelected())row.add(c.effectivePlates());if(ngauCheck.isSelected())row.add(c.gaussianPlates());
             if(fitDetailsCheck.isSelected()){row.add(metrics.fwhm());row.add(f.r2());}qm.addRow(row.toArray());
         }
         quantTable.setModel(qm);
         installMobilityReferenceEditors(qm);
-        for(int i=0;i<quantTable.getColumnCount();i++)quantTable.getColumnModel().getColumn(i).setPreferredWidth(i==2?135:i==3?125:150);
+        for(int i=0;i<quantTable.getColumnCount();i++)quantTable.getColumnModel().getColumn(i).setPreferredWidth(i==2?135:(i==3||i==4?125:150));
         resultsTable.setModel(table);windowsTable.setModel(windowModel);
         windowModel.addTableModelListener(e->{if(rebuildingTables||busy||e.getType()!=javax.swing.event.TableModelEvent.UPDATE||e.getColumn()!=4)return;int row=e.getFirstRow();try{int count=Integer.parseInt(windowModel.getValueAt(row,4).toString());refitWindowComponentCount(row,count);}catch(Exception ex){statusLabel.setText("Component-count refit failed: "+ex.getMessage());display(result);}});
         var candidateModel=model("LPNR rank","Prom. rank","Polarity","Observed apex (min)","Local prominence (a.u.)","Local sigma (a.u.)","Noise points","LPNR","BES","W50 (s)","Status");
@@ -156,7 +171,7 @@ public class PeakAnalysisPanel extends JPanel {
         var threshold=new ValueMarker(value.parametersUsed().lpnrThreshold(),java.awt.Color.DARK_GRAY,new java.awt.BasicStroke(1.3f));threshold.setLabel("Threshold "+value.parametersUsed().lpnrThreshold());
         threshold.setLabelAnchor(org.jfree.chart.ui.RectangleAnchor.TOP_RIGHT);threshold.setLabelTextAnchor(org.jfree.chart.ui.TextAnchor.BOTTOM_RIGHT);chart.getXYPlot().addRangeMarker(threshold);
         rankingHost.removeAll();rankingHost.add(new ChartPanel(chart),BorderLayout.CENTER);rankingHost.revalidate();rankingHost.repaint();
-        String domainNote=switch(activeDomain){case TIME->"Time-domain quantitation.";case CHARGE->"Charge-domain quantitation preserves charge sign"+(invertCharge?" (displaying -charge).":".")+" Fitting/detection remain in time.";case MOBILITY->(mobilityCalibration==null?"Mobility scale not calibrated.":mobilityCalibration.mobilityName()+"; signed values are shown and |mobility| > 1000 Ti is excluded.");};
+        String domainNote=switch(activeDomain){case TIME->"Time-domain quantitation.";case CHARGE->"Charge-domain quantitation preserves charge sign"+(invertCharge?" (displaying -charge).":".")+" Fitting/detection remain in time.";case MOBILITY->(mobilityCalibration==null?"Mobility scale not calibrated.":mobilityCalibration.mobilityName()+" at 25 °C; signed values are shown and |mobility| > 1000 Ti is excluded.");};
         statusLabel.setText(value.candidates().size()+" candidates | "+value.selectedCount()+" selected | "+value.fits().size()+" windows | "+value.fits().stream().filter(f->!f.reliable()).count()+" unreliable. "+domainNote);
         if(!rowFits.isEmpty())resultsTable.setRowSelectionInterval(0,0);else selection.accept(null);
         rebuildingTables=false;exportButton.setEnabled(!busy);
@@ -164,39 +179,45 @@ public class PeakAnalysisPanel extends JPanel {
 
     private String referenceRole(PeakComponent c){
         if("Instrument parameters only".equals(mobilityReferenceMode))return "—";
-        double q=componentCharge(c);if(!Double.isFinite(q))return "—";
-        if(matchesReference(q,mobilityRef1))return mobilityReferenceMode.startsWith("Two")?"Ref 1":"Reference";
-        if(matchesReference(q,mobilityRef2))return "Ref 2";
+        if(matchesReference(c,mobilityRef1))return mobilityReferenceMode.startsWith("Two")?"Ref 1":"Reference";
+        if(matchesReference(c,mobilityRef2))return "Ref 2";
         return "—";
     }
     private Double referenceKnownMobility(PeakComponent c){
-        double q=componentCharge(c);if(!Double.isFinite(q))return null;
-        if(matchesReference(q,mobilityRef1))return mobilityRef1.effectiveMobilityTi();
-        if(matchesReference(q,mobilityRef2))return mobilityRef2.effectiveMobilityTi();
+        if(matchesReference(c,mobilityRef1))return mobilityRef1.effectiveMobilityTi();
+        if(matchesReference(c,mobilityRef2))return mobilityRef2.effectiveMobilityTi();
+        return null;
+    }
+    private Double referenceTemperature(PeakComponent c){
+        if(matchesReference(c,mobilityRef1))return mobilityRef1.sourceTemperatureC();
+        if(matchesReference(c,mobilityRef2))return mobilityRef2.sourceTemperatureC();
         return null;
     }
     private double componentCharge(PeakComponent c){
         if(baseline==null)return Double.NaN;
         return new zones.processing.DomainTransform(baseline.data(),null,false).signedChargeAtTime(c.a1Seconds()/60.0);
     }
-    private boolean matchesReference(double q,MobilityReference ref){
-        if(ref==null||!Double.isFinite(q))return false;double tol=Math.max(1e-9,Math.abs(q)*1e-8);return Math.abs(q-ref.migrationChargeMilliCoulombs())<=tol;
+    private double componentTimeMinutes(PeakComponent c){return c.a1Seconds()/60.0;}
+    private boolean matchesReference(PeakComponent c,MobilityReference ref){
+        if(ref==null)return false;double t=componentTimeMinutes(c);
+        if(Double.isFinite(ref.migrationTimeMinutes())){double tol=Math.max(1e-9,Math.abs(t)*1e-8);return Math.abs(t-ref.migrationTimeMinutes())<=tol;}
+        double q=componentCharge(c);if(!Double.isFinite(q)||!Double.isFinite(ref.migrationChargeMilliCoulombs()))return false;double tol=Math.max(1e-9,Math.abs(q)*1e-8);return Math.abs(q-ref.migrationChargeMilliCoulombs())<=tol;
     }
     private void installMobilityReferenceEditors(DefaultTableModel qm){
-        int roleColumn=qm.findColumn("Mobility reference"),muColumn=qm.findColumn("Known μeff (Ti)");
-        if(roleColumn<0||muColumn<0)return;
+        int roleColumn=qm.findColumn("Mobility reference"),muColumn=qm.findColumn("Known μeff (Ti)"),tempColumn=qm.findColumn("μeff temp (°C)");
+        if(roleColumn<0||muColumn<0||tempColumn<0)return;
         String[] roles="Two effective-mobility standards".equals(mobilityReferenceMode)?new String[]{"—","Ref 1","Ref 2"}:"Instrument parameters + one effective-mobility reference".equals(mobilityReferenceMode)?new String[]{"—","Reference"}:new String[]{"—"};
         quantTable.getColumnModel().getColumn(roleColumn).setCellEditor(new DefaultCellEditor(new JComboBox<>(roles)));
         quantTable.getColumnModel().getColumn(muColumn).setCellEditor(new DefaultCellEditor(new JTextField()));
+        quantTable.getColumnModel().getColumn(tempColumn).setCellEditor(new DefaultCellEditor(new JTextField()));
         qm.addTableModelListener(e->{
             if(rebuildingTables||e.getType()!=javax.swing.event.TableModelEvent.UPDATE)return;
-            int row=e.getFirstRow(),column=e.getColumn();if(row<0||row>=quantComponents.size()||(column!=roleColumn&&column!=muColumn))return;
-            PeakComponent component=quantComponents.get(row);double q=componentCharge(component);
-            if(!Double.isFinite(q)||q==0){statusLabel.setText("Selected peak has no valid non-zero migration charge.");SwingUtilities.invokeLater(()->display(result));return;}
+            int row=e.getFirstRow(),column=e.getColumn();if(row<0||row>=quantComponents.size()||(column!=roleColumn&&column!=muColumn&&column!=tempColumn))return;
+            PeakComponent component=quantComponents.get(row);double q=componentCharge(component),t=componentTimeMinutes(component);
             String role=Objects.toString(qm.getValueAt(row,roleColumn),"—");
             if("Instrument parameters only".equals(mobilityReferenceMode)){statusLabel.setText("Instrument-parameters-only calibration does not use peak references.");SwingUtilities.invokeLater(()->display(result));return;}
             if("—".equals(role)){
-                mobilityReferenceEditor.apply("—",new MobilityReference(q,Double.NaN,"Peak at "+String.format(Locale.ROOT,"%.6g min",component.a1Seconds()/60.0)));
+                mobilityReferenceEditor.apply("—",new MobilityReference(q,t,Double.NaN,"Peak at "+String.format(Locale.ROOT,"%.6g min",t),25.0));
                 return;
             }
             Object raw=qm.getValueAt(row,muColumn);
@@ -204,10 +225,12 @@ public class PeakAnalysisPanel extends JPanel {
             try{
                 double mu=raw instanceof Number n?n.doubleValue():Double.parseDouble(raw.toString().trim());
                 if(!Double.isFinite(mu))throw new NumberFormatException();
+                Object rawTemp=qm.getValueAt(row,tempColumn);double temp=(rawTemp==null||rawTemp.toString().isBlank())?25.0:(rawTemp instanceof Number n?n.doubleValue():Double.parseDouble(rawTemp.toString().trim()));
+                zones.processing.WaterViscosity.viscosityMicroPaS(temp);
                 String label="Peak at "+String.format(Locale.ROOT,"%.6g min",component.a1Seconds()/60.0);
-                mobilityReferenceEditor.apply(role,new MobilityReference(q,mu,label));
-                statusLabel.setText(String.format(Locale.ROOT,"%s stored: q = %.8g mC, μeff = %.8g Ti",role,q,mu));
-            }catch(Exception ex){JOptionPane.showMessageDialog(this,"Enter a valid effective mobility in Ti.","Mobility reference",JOptionPane.ERROR_MESSAGE);SwingUtilities.invokeLater(()->display(result));}
+                mobilityReferenceEditor.apply(role,new MobilityReference(q,t,mu,label,temp));
+                statusLabel.setText(String.format(Locale.ROOT,"%s stored: t = %.8g min%s, μeff = %.8g Ti at %.1f °C (normalized to 25 °C for calibration)",role,t,Double.isFinite(q)?String.format(Locale.ROOT,", q = %.8g mC",q):"",mu,temp));
+            }catch(Exception ex){JOptionPane.showMessageDialog(this,"Enter a valid effective mobility and source temperature (0–100 °C).","Mobility reference",JOptionPane.ERROR_MESSAGE);SwingUtilities.invokeLater(()->display(result));}
         });
     }
     private void centerAllTables(){
@@ -275,31 +298,85 @@ public class PeakAnalysisPanel extends JPanel {
         };
     }
 
+    /** Selects the most likely fitted component containing a click on the corrected-signal plot. */
+    public boolean selectQuantitationByX(double x){
+        if(result==null||baseline==null||quantComponents.isEmpty()||!Double.isFinite(x))return false;
+        var tr=new zones.processing.DomainTransform(baseline.data(),mobilityCalibration,invertCharge);
+        double[] time=baseline.data().timeMinutes();int best=-1;double bestDistance=Double.POSITIVE_INFINITY;
+        for(int i=0;i<quantComponents.size();i++){
+            PeakComponent c=quantComponents.get(i);PeakCandidate pc=c.candidate();double a=Double.NaN,b=Double.NaN;
+            if(pc.leftBase()>=0&&pc.rightBase()>=0&&pc.leftBase()<time.length&&pc.rightBase()<time.length&&pc.rightBase()>pc.leftBase()){
+                a=tr.xAtTime(activeDomain,time[pc.leftBase()]);b=tr.xAtTime(activeDomain,time[pc.rightBase()]);
+            }
+            if(!Double.isFinite(a)||!Double.isFinite(b)||a==b){
+                double half=Math.max(c.fwhmSeconds(),pc.w50Seconds())*.65;
+                a=tr.xAtTime(activeDomain,(c.fittedApexSeconds()-half)/60.0);b=tr.xAtTime(activeDomain,(c.fittedApexSeconds()+half)/60.0);
+            }
+            if(!Double.isFinite(a)||!Double.isFinite(b))continue;double lo=Math.min(a,b),hi=Math.max(a,b);
+            if(x<lo||x>hi)continue;double center=tr.xAtTime(activeDomain,c.a1Seconds()/60.0);double d=Double.isFinite(center)?Math.abs(x-center):0;
+            if(d<bestDistance){bestDistance=d;best=i;}
+        }
+        if(best<0)return false;int view=quantTable.convertRowIndexToView(best);if(view<0)return false;
+        tabs.setSelectedIndex(0);quantTable.getSelectionModel().setSelectionInterval(view,view);quantTable.scrollRectToVisible(quantTable.getCellRect(view,0,true));
+        PeakComponent c=quantComponents.get(best);PeakFit fit=result.fits().stream().filter(f->f.window().id()==c.parentWindowId()).findFirst().orElse(null);if(fit!=null)selection.accept(fit);
+        statusLabel.setText("Graph selection matched the highlighted Quantitation row.");return true;
+    }
+
     private void refitWindowComponentCount(int row,int count){
         if(result==null||baseline==null)return;int windowId=result.fits().get(row).window().id();setBusy(true);statusLabel.setText("Refitting W"+windowId+" with "+count+" component(s)…");var snapshot=result;double[] times=Arrays.stream(baseline.data().timeMinutes()).map(v->v*60).toArray();
-        new SwingWorker<PeakAnalysisResult,Void>(){@Override protected PeakAnalysisResult doInBackground(){return new PeakAnalysisProcessor().refitWindowComponentCount(times,baseline.correctedSignal(),snapshot,windowId,count);}@Override protected void done(){try{display(get());statusLabel.setText("W"+windowId+" refitted with "+count+" component(s) — USER_EDITED.");}catch(Exception ex){statusLabel.setText("Component-count refit failed: "+(ex.getCause()==null?ex.getMessage():ex.getCause().getMessage()));display(snapshot);}finally{setBusy(false);}}}.execute();
+        new SwingWorker<PeakAnalysisResult,Void>(){@Override protected PeakAnalysisResult doInBackground(){return engine.refitWindowComponentCount(baseline,snapshot,windowId,count);}@Override protected void done(){try{display(get());statusLabel.setText("W"+windowId+" refitted with "+count+" component(s) — USER_EDITED.");}catch(Exception ex){statusLabel.setText("Component-count refit failed: "+(ex.getCause()==null?ex.getMessage():ex.getCause().getMessage()));display(snapshot);}finally{setBusy(false);}}}.execute();
     }
     private DefaultTableModel windowModel(String... columns){return new DefaultTableModel(columns,0){@Override public boolean isCellEditable(int r,int c){return c==4;}@Override public Class<?> getColumnClass(int c){if(c==4)return Integer.class;for(int r=0;r<getRowCount();r++)if(getValueAt(r,c)!=null)return getValueAt(r,c).getClass();return Object.class;}};}
     private DefaultTableModel quantitationModel(String... columns){return new DefaultTableModel(columns,0){
-        @Override public boolean isCellEditable(int r,int c){String n=getColumnName(c);if("Instrument parameters only".equals(mobilityReferenceMode))return false;if(n.equals("Mobility reference"))return true;if(n.equals("Known μeff (Ti)"))return !"—".equals(Objects.toString(getValueAt(r,findColumn("Mobility reference")),"—"));return false;}
+        @Override public boolean isCellEditable(int r,int c){String n=getColumnName(c);if("Instrument parameters only".equals(mobilityReferenceMode))return false;if(n.equals("Mobility reference"))return true;if(n.equals("Known μeff (Ti)")||n.equals("μeff temp (°C)"))return !"—".equals(Objects.toString(getValueAt(r,findColumn("Mobility reference")),"—"));return false;}
         @Override public Class<?> getColumnClass(int c){String n=getColumnName(c);if(n.equals("Mobility reference"))return String.class;if(n.equals("Known μeff (Ti)"))return Object.class;for(int r=0;r<getRowCount();r++)if(getValueAt(r,c)!=null)return getValueAt(r,c).getClass();return Object.class;}
     };}
     private DefaultTableModel model(String... columns){return new DefaultTableModel(columns,0){@Override public boolean isCellEditable(int r,int c){return false;}@Override public Class<?> getColumnClass(int c){for(int r=0;r<getRowCount();r++)if(getValueAt(r,c)!=null)return getValueAt(r,c).getClass();return Object.class;}};}
-    private void setBusy(boolean value){busy=value;analyzeButton.setEnabled(!value);thresholdSpinner.setEnabled(!value);exportButton.setEnabled(!value&&result!=null);}
+    private void setBusy(boolean value){
+        busy=value;analyzeButton.setEnabled(!value);thresholdSpinner.setEnabled(!value);exportButton.setEnabled(!value&&result!=null);
+        if(value){statusLabel.setFont(statusLabel.getFont().deriveFont(java.awt.Font.BOLD,16f));statusLabel.setForeground(new java.awt.Color(180,70,20));}
+        else{java.awt.Font f=UIManager.getFont("Label.font");java.awt.Color c=UIManager.getColor("Label.foreground");if(f!=null)statusLabel.setFont(f);if(c!=null)statusLabel.setForeground(c);}
+    }
     private void exportTable(){
         if(result==null)return;Object choice=JOptionPane.showInputDialog(this,"Decimal separator:","Export quantitation table",JOptionPane.QUESTION_MESSAGE,null,new Object[]{"Point (.)","Comma (,)"},"Point (.)");if(choice==null)return;
-        char decimal=choice.toString().startsWith("Comma")?',':'.';JFileChooser chooser=new JFileChooser();chooser.setSelectedFile(new java.io.File("Zones-quantitation.tsv"));if(chooser.showSaveDialog(this)!=JFileChooser.APPROVE_OPTION)return;
+        char decimal=choice.toString().startsWith("Comma")?',':'.';JFileChooser chooser=new JFileChooser();chooser.setSelectedFile(new java.io.File("Zones-quantitation.csv"));if(chooser.showSaveDialog(this)!=JFileChooser.APPROVE_OPTION)return;
         try(var w=java.nio.file.Files.newBufferedWriter(chooser.getSelectedFile().toPath())){for(int c=0;c<quantTable.getColumnCount();c++){if(c>0)w.write('\t');w.write(quantTable.getColumnName(c));}w.newLine();for(int r=0;r<quantTable.getRowCount();r++){for(int c=0;c<quantTable.getColumnCount();c++){if(c>0)w.write('\t');Object v=quantTable.getValueAt(r,c);String text=v==null?"":v.toString();if(decimal==',')text=text.replace('.',',');w.write(text);}w.newLine();}statusLabel.setText("Table exported: "+chooser.getSelectedFile());}catch(Exception ex){statusLabel.setText("Export failed: "+ex.getMessage());}
     }
     private void export(){
-        if(result==null)return;JFileChooser chooser=new JFileChooser();chooser.setSelectedFile(new java.io.File("Zones-results.zip"));
+        if(result==null)return;
+        JCheckBox time=new JCheckBox("Processed time-domain electropherogram",true);
+        JCheckBox charge=new JCheckBox("Processed charge-domain electropherogram",baseline!=null&&new zones.processing.DomainTransform(baseline.data(),mobilityCalibration,invertCharge).hasCharge());
+        JCheckBox mobility=new JCheckBox("Processed mobility-domain electropherogram",mobilityCalibration!=null);
+        JCheckBox zipArchive=new JCheckBox("Save as ZIP archive",true);
+        charge.setEnabled(charge.isSelected());mobility.setEnabled(mobility.isSelected());
+        JPanel options=new JPanel(new java.awt.GridLayout(0,1));options.add(new JLabel("Quantitation + processing parameters are always included."));options.add(time);options.add(charge);options.add(mobility);options.add(zipArchive);
+        if(JOptionPane.showConfirmDialog(this,options,"Export user results",JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE)!=JOptionPane.OK_OPTION)return;
+        JFileChooser chooser=new JFileChooser();
+        if(zipArchive.isSelected()){
+            chooser.setSelectedFile(new java.io.File("Zones-results.zip"));
+        }else{
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);chooser.setDialogTitle("Select output folder");
+        }
         if(chooser.showSaveDialog(this)!=JFileChooser.APPROVE_OPTION)return;
         Path path=chooser.getSelectedFile().toPath();
-        if(java.nio.file.Files.exists(path)&&JOptionPane.showConfirmDialog(this,"Replace the existing file?","Export",JOptionPane.YES_NO_OPTION)!=JOptionPane.YES_OPTION)return;
-        setBusy(true);var snapshot=result;
+        if(zipArchive.isSelected()&&java.nio.file.Files.exists(path)&&JOptionPane.showConfirmDialog(this,"Replace the existing file?","Export",JOptionPane.YES_NO_OPTION)!=JOptionPane.YES_OPTION)return;
+        setBusy(true);var snapshot=result;var opts=new UserResultsExporter.Options(time.isSelected(),charge.isSelected(),mobility.isSelected());boolean zipped=zipArchive.isSelected();
         new SwingWorker<Void,Void>(){
+            @Override protected Void doInBackground()throws Exception{
+                UserResultsExporter exporter=new UserResultsExporter();
+                if(zipped)exporter.write(path,baseline,analysis,snapshot,mobilityCalibration,invertCharge,exportMetadata,opts);
+                else exporter.writeDirectory(path,baseline,analysis,snapshot,mobilityCalibration,invertCharge,exportMetadata,opts);
+                return null;
+            }
+            @Override protected void done(){try{get();statusLabel.setText("User results exported: "+path);}catch(Exception e){statusLabel.setText("Export failed: "+e.getMessage());}finally{setBusy(false);}}
+        }.execute();
+    }
+    private void exportDeveloper(){
+        if(result==null)return;JFileChooser chooser=new JFileChooser();chooser.setSelectedFile(new java.io.File("Zones-developer-diagnostics.zip"));
+        if(chooser.showSaveDialog(this)!=JFileChooser.APPROVE_OPTION)return;Path path=chooser.getSelectedFile().toPath();
+        setBusy(true);var snapshot=result;new SwingWorker<Void,Void>(){
             @Override protected Void doInBackground()throws Exception{new PeakAnalysisExporter().write(path,baseline,analysis,snapshot);return null;}
-            @Override protected void done(){try{get();statusLabel.setText("Exported: "+path);}catch(Exception e){statusLabel.setText("Export failed: "+e.getMessage());}finally{setBusy(false);}}
+            @Override protected void done(){try{get();statusLabel.setText("Developer diagnostics exported: "+path);}catch(Exception e){statusLabel.setText("Export failed: "+e.getMessage());}finally{setBusy(false);}}
         }.execute();
     }
     @SuppressWarnings("unchecked")
@@ -330,7 +407,7 @@ public class PeakAnalysisPanel extends JPanel {
         controlsPanel.add(thresholdSpinner);
         analyzeButton.setText("Analyze / refit");
         controlsPanel.add(analyzeButton);
-        exportButton.setText("Export ZIP…");
+        exportButton.setText("Export results");
         controlsPanel.add(exportButton);
         componentsCheck.setText("Components");
         componentsCheck.setSelected(true);

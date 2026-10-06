@@ -14,7 +14,7 @@ public final class PhysicalUnits {
     }
     public static double lambda(double logLambda) {
         if(!Double.isFinite(logLambda) || logLambda<5 || logLambda>15)
-            throw new IllegalArgumentException("log10(lambda) must be between 5 and 15.");
+            throw new IllegalArgumentException("log(λ) must be between 5 and 15.");
         return Math.pow(10,logLambda);
     }
 }
